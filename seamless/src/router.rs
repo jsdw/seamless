@@ -1,3 +1,7 @@
+//! A router implementation that can handle requests in a type safe way, while
+//! also allowing information about the routes, route descriptions and expected
+//! input and output types to be automatically generated from it.
+
 use std::collections::HashMap;
 use http::{ Request, Response };
 use serde::{ Serialize, de::DeserializeOwned };
@@ -7,17 +11,15 @@ use std::pin::Pin;
 use std::future::Future;
 use async_trait::async_trait;
 
-/// The entry point; you can create an instance of this and then
-/// add API routes to it using `api.add`, then get information about
-/// those routes using `api.info`, or handle an incoming request
-/// using `api.handle`.
+/// The entry point; you can create an instance of this and then add API routes to it
+/// using [`Self::add()`]. You can then get information about the routes that have been added
+/// using [`Self::info()`], or handle an [`http::Request`] using [`Self::handle()`].
 pub struct Api {
     base_path: String,
     routes: HashMap<(Method,String),ResolvedApiRoute>
 }
 
-// An API route has the contents of `ResolvedHandler` but also a
-// description.
+// An API route has the contents of `ResolvedHandler` but also a description.
 struct ResolvedApiRoute {
     description: String,
     resolved_handler: ResolvedHandler
@@ -32,9 +34,11 @@ pub struct ResolvedHandler {
     response_type: ApiBodyType
 }
 
+// A type alias for an overly complicated boxed Future type that can be sent across threads.
 type Fut<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
-/// does this route expect a GET or POST request
+/// does this route expect a GET or POST request. This is used internally to match on routes.
+#[doc(hidden)]
 #[derive(Hash,Serialize,Clone,Copy,PartialEq,Eq,Debug)]
 pub enum Method {
     Get,
@@ -53,13 +57,17 @@ impl From<&http::Method> for Method {
 
 impl Api {
 
-    /// Instantiate a new API
+    /// Instantiate a new API.
     pub fn new() -> Api {
         Api::new_with_base_path("")
     }
 
-    /// Instantiate a new API that will handle requests with the
+    /// Instantiate a new API that will handle requests that begin with the
     /// provided base path.
+    ///
+    /// For example, if the provided `base_path` is "/foo/bar", and a route with
+    /// the path "hi" is added, then an incoming [`http::Request`] with the path
+    /// `"/foo/bar/hi"` will match it.
     pub fn new_with_base_path<S: Into<String>>(base_path: S) -> Api {
         Api {
             base_path: base_path.into(),
@@ -67,12 +75,35 @@ impl Api {
         }
     }
 
-    /// Add a Route to the API
+    /// Add a new route to the API. You must provide a path to make this route available at,
+    /// and are given back a [`RouteBuilder`] which can be used to give the route a handler
+    /// and a description.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use seamless::{ Api, Json };
+    /// # use std::convert::Infallible;
+    /// # let mut api = Api::new();
+    /// // This route expects a JSON formatted string to be provided, and echoes it straight back.
+    /// api.add("some/route/name")
+    ///    .description("This route takes some Foo's in and returns some Bar's")
+    ///    .handler(|body: Json<String>| async move { Ok::<_,std::convert::Infallible>(body.json) });
+    ///
+    /// // This route delegates to an async fn to sum some values, so we can infer more types in the handler.
+    /// api.add("another.route")
+    ///    .description("This route takes an array of values and sums them")
+    ///    .handler(|body: Json<_>| sum(body.json));
+    ///
+    /// async fn sum(ns: Vec<u64>) -> Result<u64, Infallible> {
+    ///     Ok(ns.into_iter().sum())
+    /// }
+    /// ```
     pub fn add<P: Into<String>>(&mut self, path: P) -> RouteBuilder {
         RouteBuilder::new(self, path.into())
     }
 
-    // Add a route given the individual parts (internal only)
+    // Add a route given the individual parts (for internal use)
     fn add_parts<A, P: Into<String>, Handler: ResolveHandler<A>>(&mut self, path: P, description: String, handler: Handler) {
         let resolved_handler = handler.resolve_handler();
         self.routes.insert((resolved_handler.method, path.into()), ResolvedApiRoute {
@@ -81,7 +112,11 @@ impl Api {
         });
     }
 
-    /// Match a request against our API routes and run the relevant handler
+    /// Match an incoming [`http::Request`] against our API routes and run the relevant handler if a
+    /// matching one is found. We'll get back bytes representing a JSON response back if all goes ok,
+    /// else we'll get back a [`RouteError`], which will either be [`RouteError::NotFound`] if no matching
+    /// route was found, or a [`RouteError::Err`] if a matching route was found, but that handler emitted
+    /// an error.
     pub async fn handle(&self, req: Request<Vec<u8>>) -> Result<Response<Vec<u8>>,RouteError> {
         let base_path = &self.base_path.trim_start_matches('/');
         let req_path = req.uri().path().trim_start_matches('/');
@@ -100,7 +135,7 @@ impl Api {
         }
     }
 
-    /// Return information for our current API routes
+    /// Return information about the API routes that have been defined so far.
     pub fn info(&self) -> Vec<RouteInfo> {
         let mut info = vec![];
         for ((_method,key), val) in &self.routes {
@@ -120,19 +155,43 @@ impl Api {
 
 /// Add a new API route by providing a description (optional but encouraged)
 /// and then a handler function.
+///
+/// # Examples
+///
+/// ```
+/// # use seamless::{ Api, Json };
+/// # use std::convert::Infallible;
+/// # let mut api = Api::new();
+/// // This route expects a JSON formatted string to be provided, and echoes it straight back.
+/// api.add("some/route/name")
+///    .description("This route takes some Foo's in and returns some Bar's")
+///    .handler(|body: Json<String>| async move { Ok::<_,std::convert::Infallible>(body.json) });
+///
+/// // This route delegates to an async fn to sum some values, so we can infer more types in the handler.
+/// api.add("another.route")
+///    .description("This route takes an array of values and sums them")
+///    .handler(|body: Json<_>| sum(body.json));
+///
+/// async fn sum(ns: Vec<u64>) -> Result<u64, Infallible> {
+///     Ok(ns.into_iter().sum())
+/// }
+/// ```
 pub struct RouteBuilder<'a> {
     api: &'a mut Api,
     path: String,
     description: String
 }
 impl <'a> RouteBuilder<'a> {
-    pub fn new(api: &'a mut Api, path: String) -> Self {
+    fn new(api: &'a mut Api, path: String) -> Self {
         RouteBuilder { api, path, description: String::new() }
     }
+    /// Add a description to the API route.
     pub fn description<S: Into<String>>(mut self, desc: S) -> Self {
         self.description = desc.into();
         self
     }
+    /// Add a handler to the API route. Until this has been added, the route
+    /// doesn't "exist".
     pub fn handler<A, Handler: ResolveHandler<A>>(self, handler: Handler) {
         self.api.add_parts(self.path, self.description, handler);
     }
@@ -149,19 +208,55 @@ pub enum RouteError {
     Err(ApiError)
 }
 
+impl RouteError {
+    /// Assume that the `RouteError` contains an `ApiError` and attempt to
+    /// unwrap this
+    ///
+    /// # Panics
+    ///
+    /// Panics if the RouteError does not contain an ApiError
+    pub fn unwrap_api_error(self) -> ApiError {
+        match self {
+            RouteError::Err(e) => e,
+            _ => panic!("Attempt to unwrap_api_err on RouteError that is NotFound")
+        }
+    }
+}
+
 /// Information about a single route.
 #[derive(Debug,Clone,Serialize)]
 pub struct RouteInfo {
+    /// The name/path that the [`http::Request`] needs to contain
+    /// in order to match this route.
     pub name: String,
+    /// The HTTP method expected in order for a [`http::Request`] to
+    /// match this route.
     pub method: Method,
+    /// The description of the route as set by [`RouteBuilder::description()`]
     pub description: String,
+    /// The shape of the data expected to be provided as part of the [`http::Request`]
+    /// for this route. This doesn't care about the wire format that the data is provided in
+    /// (be is JSON or other).
+    ///
+    /// If the handler function for the route asks for something of type [`Json<T>`], then
+    /// the data will be expected to be provided as JSON. However, it is up to the type that
+    /// implements [`Body`] to decide on the expected wire format.
     pub request_type: ApiBodyType,
+    /// The shape of the data that is returned from this API route.
     pub response_type: ApiBodyType
 }
 
-/// This trait is implemented by anything that represents the incoming request type
+/// This trait is implemented by anything that represents the incoming request type.
+/// Only one argument implementing this can be asked for in a given handler. The type
+/// that implements this is used to determine the input type expected by the handler
+/// for the sake of generating API information.
 pub trait Body: Sized {
+    /// The type of the error returned if [`Self::get_body()`] fails.
     type Error: IntoApiError;
+    /// Given a request containing arbitrary bytes, this function needs to return an
+    /// instance of the type that this trait is implemented on (typically by deserializing
+    /// it from the bytes provided), or else it should return an error describing what
+    /// went wrong.
     fn get_body(req: Request<Vec<u8>>) -> Result<Self,Self::Error>;
 }
 
@@ -170,6 +265,7 @@ pub trait Body: Sized {
 /// Notably, `T` needs to implement `ApiBody` with the
 /// Deserialize option.
 pub struct Json<T> {
+    /// the type that has been deserialized from JSON.
     pub json: T
 }
 impl <T> Body for Json<T> where T: DeserializeOwned {
@@ -196,6 +292,7 @@ impl <T> ApiBody for Json<T> where T: ApiBody {
 /// that the user can provide arbitrary binary data, and
 /// we'll make that data available within the handler as bytes.
 pub struct Binary {
+    /// The bytes that were provided in the incoming [`http::Request`]
     pub bytes: Vec<u8>
 }
 impl Body for Binary {
@@ -214,13 +311,18 @@ impl ApiBody for Binary {
     }
 }
 
-/// This trait can be implemented by types that are based on the
-/// incoming request object (for example, currently logged in user).
-/// doing so makes it possible for you to ask for those types in the
-/// handler function you provide.
+/// When a route matches, [`Self::get_context()`] is called for each
+/// argument that is provided to the handler and implements this trait.
+/// A successful result is passed to the handler function. An erroneous
+/// result leads to the handler function not being called, and instead an
+/// error being returned from [`Api::handle()`].
 #[async_trait]
 pub trait Context: Sized {
+    /// The type of the error returned if [`Self::get_context()`] fails.
     type Error: IntoApiError;
+    /// Given a [`http::Request<()>`], return a value of type `T` back, or
+    /// else return an [`Self::Error`] describing what went wrong. Any errors
+    /// here will lead to the route bailing out and the handler not being run.
     async fn get_context(req: &Request<()>) -> Result<Self,Self::Error>;
 }
 
@@ -260,7 +362,9 @@ macro_rules! resolve_for_contexts {
     ( $( $($ctx:ident)* ;)* ) => {
 
         // Markers to differentiate the trait impls:
+        #[doc(hidden)]
         pub struct WithBody;
+        #[doc(hidden)]
         pub struct WithoutBody;
 
         // Impl each trait with and without the body, and with each number of contexts provided:

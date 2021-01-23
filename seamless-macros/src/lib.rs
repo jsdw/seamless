@@ -5,6 +5,9 @@ use proc_macro::TokenStream;
 use quote::{ quote_spanned };
 use syn::{ spanned::Spanned };
 
+/// Use this macro to generate serde `Serialize`/`Deserialize` impls in addition
+/// to an `ApiBody` impl that can hand back information about the shape of the
+/// type.
 #[allow(non_snake_case)]
 #[proc_macro_attribute]
 pub fn ApiBody(attrs: TokenStream, input: TokenStream) -> TokenStream {
