@@ -1,0 +1,5 @@
+error: One of '#[api_error(internal)]' or '#[api_error(external)]' or '#[api_error(external = "foo")]' is required (1)
+ --> $DIR/01_basic.rs:4:8
+  |
+4 | struct Foo {
+  |        ^^^

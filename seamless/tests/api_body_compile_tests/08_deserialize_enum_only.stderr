@@ -1,0 +1,5 @@
+error[E0277]: the trait bound `Foo: Serialize` is not satisfied
+  --> $DIR/08_deserialize_enum_only.rs:10:31
+   |
+10 |     let f = Foo::Bar{ n: 10 }.to_json_value();
+   |                               ^^^^^^^^^^^^^ the trait `Serialize` is not implemented for `Foo`

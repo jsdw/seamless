@@ -1,0 +1,5 @@
+error: serde attributes not allowed; ApiBody macro handles that
+ --> $DIR/02_struct_no_serde_attrs.rs:6:5
+  |
+6 |     #[serde(rename = "foo")]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^

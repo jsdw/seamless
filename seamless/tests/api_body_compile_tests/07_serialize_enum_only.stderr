@@ -1,0 +1,8 @@
+error[E0277]: the trait bound `for<'de> Foo: Deserialize<'de>` is not satisfied
+  --> $DIR/07_serialize_enum_only.rs:11:18
+   |
+11 |     let f: Foo = ApiBody::from_json_value(json!({
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^ the trait `for<'de> Deserialize<'de>` is not implemented for `Foo`
+   |
+   = note: required because of the requirements on the impl of `DeserializeOwned` for `Foo`
+   = note: required by `from_json_value`

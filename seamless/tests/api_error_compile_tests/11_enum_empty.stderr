@@ -1,0 +1,5 @@
+error: ApiError: Enums without variants are not supported
+ --> $DIR/11_enum_empty.rs:3:6
+  |
+3 | enum Foo { }
+  |      ^^^

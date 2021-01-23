@@ -1,0 +1,5 @@
+error: Unit enum fields can't be mixed with named fields
+ --> $DIR/11_enum_cant_mix_unit_named.rs:4:6
+  |
+4 | enum Lark {
+  |      ^^^^

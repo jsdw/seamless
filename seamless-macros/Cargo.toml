@@ -1,0 +1,21 @@
+[package]
+name = "seamless_macros"
+version = "0.0.1"
+authors = ["James Wilson <james@jsdw.me>"]
+edition = "2018"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/jsdw/seamless"
+categories = ["web-programming", "web-programming::http-server", "asynchronous"]
+keywords = ["api", "http", "rpc", "json"]
+description = """
+Macros to complement the 'seamless' library
+"""
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"

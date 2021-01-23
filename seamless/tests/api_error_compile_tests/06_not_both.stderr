@@ -1,0 +1,5 @@
+error: 'internal' and 'external' can't be declared together
+ --> $DIR/06_not_both.rs:2:13
+  |
+2 | #[api_error(external, internal)]
+  |             ^^^^^^^^

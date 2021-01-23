@@ -1,0 +1,5 @@
+error: One of '#[api_error(internal)]' or '#[api_error(external)]' or '#[api_error(external = "foo")]' is required (1)
+ --> $DIR/08_enum_basic.rs:5:5
+  |
+5 |     Bar,
+  |     ^^^
