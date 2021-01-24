@@ -3,7 +3,7 @@
 //! input and output types to be automatically generated from it.
 
 use std::collections::HashMap;
-use http::{ Request, Response };
+use http::{ Request, Response, method::Method };
 use serde::{ Serialize, de::DeserializeOwned };
 use super::error::{ ApiError };
 use super::body::{ ApiBody, ApiBodyType };
@@ -36,24 +36,6 @@ pub struct ResolvedHandler {
 
 // A type alias for an overly complicated boxed Future type that can be sent across threads.
 type Fut<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
-
-/// does this route expect a GET or POST request. This is used internally to match on routes.
-#[doc(hidden)]
-#[derive(Hash,Serialize,Clone,Copy,PartialEq,Eq,Debug)]
-pub enum Method {
-    Get,
-    Post,
-    Unknown
-}
-impl From<&http::Method> for Method {
-    fn from(other: &http::Method) -> Method {
-        match other {
-            &http::Method::GET => Method::Get,
-            &http::Method::POST => Method::Post,
-            _ => Method::Unknown
-        }
-    }
-}
 
 impl Api {
 
@@ -106,7 +88,7 @@ impl Api {
     // Add a route given the individual parts (for internal use)
     fn add_parts<A, P: Into<String>, Handler: ResolveHandler<A>>(&mut self, path: P, description: String, handler: Handler) {
         let resolved_handler = handler.resolve_handler();
-        self.routes.insert((resolved_handler.method, path.into()), ResolvedApiRoute {
+        self.routes.insert((resolved_handler.method.clone(), path.into()), ResolvedApiRoute {
             description,
             resolved_handler
         });
@@ -141,7 +123,7 @@ impl Api {
         for ((_method,key), val) in &self.routes {
             info.push(RouteInfo {
                 name: key.to_owned(),
-                method: val.resolved_handler.method,
+                method: format!("{}", &val.resolved_handler.method),
                 description: val.description.clone(),
                 request_type: val.resolved_handler.request_type.clone(),
                 response_type: val.resolved_handler.response_type.clone()
@@ -230,8 +212,8 @@ pub struct RouteInfo {
     /// in order to match this route.
     pub name: String,
     /// The HTTP method expected in order for a [`http::Request`] to
-    /// match this route.
-    pub method: Method,
+    /// match this route, as a string.
+    pub method: String,
     /// The description of the route as set by [`RouteBuilder::description()`]
     pub description: String,
     /// The shape of the data expected to be provided as part of the [`http::Request`]
@@ -258,6 +240,10 @@ pub trait Body: Sized {
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
     fn get_body(req: Request<Vec<u8>>) -> Result<Self,Self::Error>;
+    /// Which HTTP method is required for this Body to be valid. By default, if a body
+    /// is present in the handler we'll expect the method to be POST. Implement this function
+    /// to override that.
+    fn get_method() -> Method { Method::POST }
 }
 
 /// If the last argument to the handler is this, we'll assume
@@ -412,7 +398,7 @@ macro_rules! resolve_for_contexts {
                 };
 
                 ResolvedHandler {
-                    method: Method::Post,
+                    method: Req::get_method(),
                     handler: Box::new(move |req| Box::pin(handler(req))),
                     request_type: Req::api_body_type(),
                     response_type: Res::api_body_type()
@@ -458,7 +444,7 @@ macro_rules! resolve_for_contexts {
                 };
 
                 ResolvedHandler {
-                    method: Method::Get,
+                    method: Method::GET,
                     handler: Box::new(move |req| Box::pin(handler(req))),
                     request_type: ApiBodyType {
                         description: "No request body is expected".to_owned(),

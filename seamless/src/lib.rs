@@ -1,4 +1,4 @@
-// #![warn(missing_docs)]
+#![warn(missing_docs)]
 //! An opinionated library to easily plug RPC style JSON APIs into your existing HTTP framework.
 //!
 //! Here's what using it might look like:
@@ -89,10 +89,11 @@ pub use seamless_macros::*;
 
 pub use async_trait::async_trait;
 
+pub use http::method::Method;
+
 pub use router::{
     Api,
     Context,
-    Method,
     RouteError,
     RouteInfo,
     Json,
