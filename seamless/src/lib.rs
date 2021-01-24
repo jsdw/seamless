@@ -1,4 +1,4 @@
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 //! An opinionated library to easily plug RPC style JSON APIs into your existing HTTP framework.
 //!
 //! Here's what using it might look like:
@@ -96,7 +96,7 @@ pub use router::{
     RouteError,
     RouteInfo,
     Json,
-    Binary
+    Binary,
 };
 
 pub use body::{
@@ -107,5 +107,4 @@ pub use body::{
 
 pub use error::{
     ApiError,
-    IntoApiError
 };

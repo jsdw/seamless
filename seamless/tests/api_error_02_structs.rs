@@ -1,4 +1,4 @@
-use seamless::{ ApiError, IntoApiError };
+use seamless::{ ApiError };
 
 #[derive(ApiError)]
 #[api_error(internal)]
@@ -14,7 +14,7 @@ impl std::fmt::Display for Internal {
 #[test]
 fn test_internal() {
     let a = Internal { error: "hi".to_owned() };
-    let e = a.into_api_error();
+    let e: ApiError = a.into();
     assert_eq!(e.internal_message, "hi".to_owned());
     assert_eq!(e.external_message, "Internal server error".to_owned());
     assert_eq!(e.code, 500);
@@ -34,7 +34,7 @@ impl std::fmt::Display for External {
 #[test]
 fn test_external() {
     let a = External { error: "hi".to_owned() };
-    let e = a.into_api_error();
+    let e: ApiError = a.into();
     assert_eq!(e.internal_message, "hi".to_owned());
     assert_eq!(e.external_message, "hi".to_owned());
     assert_eq!(e.code, 500);
@@ -54,7 +54,7 @@ impl std::fmt::Display for InternalWithMsg {
 #[test]
 fn test_internal_with_message() {
     let a = InternalWithMsg { error: "hi".to_owned() };
-    let e = a.into_api_error();
+    let e: ApiError = a.into();
     assert_eq!(e.internal_message, "hi".to_owned());
     assert_eq!(e.external_message, "Custom message".to_owned());
     assert_eq!(e.code, 500);
@@ -74,7 +74,7 @@ impl std::fmt::Display for InternalWithMsgAndCode {
 #[test]
 fn test_internal_with_message_and_code() {
     let a = InternalWithMsgAndCode { error: "hi".to_owned() };
-    let e = a.into_api_error();
+    let e: ApiError = a.into();
     assert_eq!(e.internal_message, "hi".to_owned());
     assert_eq!(e.external_message, "Not Authed".to_owned());
     assert_eq!(e.code, 400);

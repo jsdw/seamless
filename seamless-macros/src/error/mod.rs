@@ -21,15 +21,15 @@ pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
         Err(e) => return e.to_compile_error()
     };
 
-    // For structs with 1 unnamed field, we can delegate to the inner IntoApiError, else error:
+    // For structs with 1 unnamed field, we can delegate to the inner ApiError, else error:
     if attrs.delegate_to_child {
         if let Err(e) = one_unnamed_field(&s.ident, &s.fields) {
             return e.to_compile_error();
         }
         return quote! {
-            impl #crate_name::IntoApiError for #struct_name {
-                fn into_api_error(self) -> #crate_name::error::ApiError {
-                    #crate_name::IntoApiError::into_api_error(self.0)
+            impl From<#struct_name> for #crate_name::error::ApiError {
+                fn from(s: #struct_name) -> #crate_name::error::ApiError {
+                    s.0.into()
                 }
             }
         }
@@ -48,17 +48,17 @@ pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
     let external_msg_tok = if let Some(msg) = attrs.external_message {
         quote!{ #msg.to_owned() }
     } else {
-        quote!{ format!("{}", self) }
+        quote!{ format!("{}", s) }
     };
 
     let code = syn::LitInt::new(&attrs.code.to_string(), Span::call_site());
 
     quote!{
-        impl #crate_name::IntoApiError for #struct_name {
-            fn into_api_error(self) -> #crate_name::error::ApiError {
+        impl From<#struct_name> for #crate_name::error::ApiError {
+            fn from(s: #struct_name) -> #crate_name::error::ApiError {
                 #crate_name::error::ApiError {
                     code: #code,
-                    internal_message: format!("{}", self),
+                    internal_message: format!("{}", s),
                     external_message: #external_msg_tok,
                     value: None
                 }
@@ -103,7 +103,7 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
                 return e.to_compile_error()
             }
             enum_items.extend(quote! {
-                #struct_name::#ident (inner) => #crate_name::IntoApiError::into_api_error(inner),
+                #struct_name::#ident (inner) => inner.into(),
             })
         }
 
@@ -116,13 +116,13 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
         let external_msg_tok = if let Some(msg) = attrs.external_message {
             quote!{ #msg.to_owned() }
         } else {
-            quote!{ format!("{}", self) }
+            quote!{ format!("{}", s) }
         };
 
         enum_items.extend(quote! {
             #struct_name::#full_ident => #crate_name::error::ApiError {
                 code: #code,
-                internal_message: format!("{}", self),
+                internal_message: format!("{}", s),
                 external_message: #external_msg_tok,
                 value: None
             },
@@ -131,9 +131,9 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
     }
 
     quote! {
-        impl #crate_name::IntoApiError for #struct_name {
-            fn into_api_error(self) -> #crate_name::error::ApiError {
-                match self {
+        impl From<#struct_name> for #crate_name::error::ApiError {
+            fn from(s: #struct_name) -> #crate_name::error::ApiError {
+                match s {
                     #enum_items
                 }
             }

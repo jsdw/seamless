@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use http::{ Request, Response };
 use serde::{ Serialize, de::DeserializeOwned };
-use super::error::{ IntoApiError, ApiError };
+use super::error::{ ApiError };
 use super::body::{ ApiBody, ApiBodyType };
 use std::pin::Pin;
 use std::future::Future;
@@ -252,7 +252,7 @@ pub struct RouteInfo {
 /// for the sake of generating API information.
 pub trait Body: Sized {
     /// The type of the error returned if [`Self::get_body()`] fails.
-    type Error: IntoApiError;
+    type Error: Into<ApiError>;
     /// Given a request containing arbitrary bytes, this function needs to return an
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
@@ -319,7 +319,7 @@ impl ApiBody for Binary {
 #[async_trait]
 pub trait Context: Sized {
     /// The type of the error returned if [`Self::get_context()`] fails.
-    type Error: IntoApiError;
+    type Error: Into<ApiError>;
     /// Given a [`http::Request<()>`], return a value of type `T` back, or
     /// else return an [`Self::Error`] describing what went wrong. Any errors
     /// here will lead to the route bailing out and the handler not being run.
@@ -375,7 +375,7 @@ macro_rules! resolve_for_contexts {
             Req: Body + ApiBody + Send,
             $( $ctx: Context + Send, )*
             Res: ApiBody + Serialize + 'static,
-            Err: IntoApiError + 'static,
+            Err: Into<ApiError> + 'static,
             F: Future<Output = Result<Res,Err>> + Send + 'static,
             Handler: Fn($($ctx,)* Req) -> F + Clone + Sync + Send + 'static
         {
@@ -392,15 +392,15 @@ macro_rules! resolve_for_contexts {
                         #[allow(non_snake_case)]
                         let $ctx = $ctx::get_context(&bodyless_req)
                             .await
-                            .map_err(|e| e.into_api_error())?;
+                            .map_err(|e| { let e: ApiError = e.into(); e })?;
                         )*
 
                         let (parts, _) = bodyless_req.into_parts();
                         let req = Request::from_parts(parts, body);
-                        let body = Req::get_body(req).map_err(|e| e.into_api_error())?;
+                        let body = Req::get_body(req).map_err(|e| { let e: ApiError = e.into(); e })?;
                         let handler_res = inner_handler($($ctx,)* body)
                             .await
-                            .map_err(|e| e.into_api_error())?;
+                            .map_err(|e| { let e: ApiError = e.into(); e })?;
 
                         let response = Response::builder()
                             .header("Content-Type", "application/json")
@@ -424,7 +424,7 @@ macro_rules! resolve_for_contexts {
         where
             $( $ctx: Context + Send, )*
             Res: ApiBody + Serialize + 'static,
-            Err: IntoApiError + 'static,
+            Err: Into<ApiError> + 'static,
             F: Future<Output = Result<Res,Err>> + Send + 'static,
             Handler: Fn($($ctx),*) -> F + Clone + Sync + Send + 'static
         {
@@ -441,12 +441,12 @@ macro_rules! resolve_for_contexts {
                         #[allow(non_snake_case)]
                         let $ctx = $ctx::get_context(&bodyless_req)
                             .await
-                            .map_err(|e| e.into_api_error())?;
+                            .map_err(|e| { let e: ApiError = e.into(); e })?;
                         )*
 
                         let handler_res = inner_handler($($ctx),*)
                             .await
-                            .map_err(|e| e.into_api_error())?;
+                            .map_err(|e| { let e: ApiError = e.into(); e })?;
 
                         let response = Response::builder()
                             .header("Content-Type", "application/json")

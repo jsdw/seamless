@@ -52,21 +52,6 @@ impl ApiError {
     }
 }
 
-/// This trait is automatically implemented for any type which
-/// has a `#[derive(seamless::ApiError)` attached.
-pub trait IntoApiError {
-    /// How to convert the type into an [`ApiError`]
-    fn into_api_error(self) -> ApiError;
-}
-
-impl IntoApiError for ApiError {
-    fn into_api_error(self) -> ApiError {
-        self
-    }
-}
-
-impl IntoApiError for std::convert::Infallible {
-    fn into_api_error(self) -> ApiError {
-        unreachable!()
-    }
+impl From<std::convert::Infallible> for ApiError {
+    fn from(_: std::convert::Infallible) -> ApiError { unreachable!() }
 }

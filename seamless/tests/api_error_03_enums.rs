@@ -1,4 +1,4 @@
-use seamless::{ ApiError, IntoApiError };
+use seamless::{ ApiError };
 
 #[derive(ApiError)]
 #[api_error(internal)]
@@ -34,7 +34,7 @@ impl std::fmt::Display for Bar {
 
 #[test]
 fn test_enum_a() {
-    let a = Foo::A.into_api_error();
+    let a: ApiError = Foo::A.into();
     assert_eq!(a.code, 500);
     assert_eq!(a.internal_message, "a".to_owned());
     assert_eq!(a.external_message, "Internal server error".to_owned());
@@ -42,7 +42,7 @@ fn test_enum_a() {
 
 #[test]
 fn test_enum_b() {
-    let a = Foo::B { message: "Custom".to_owned() }.into_api_error();
+    let a: ApiError = Foo::B { message: "Custom".to_owned() }.into();
     assert_eq!(a.code, 404);
     assert_eq!(a.internal_message, "Custom".to_owned());
     assert_eq!(a.external_message, "Hidden".to_owned());
@@ -50,7 +50,7 @@ fn test_enum_b() {
 
 #[test]
 fn test_enum_c() {
-    let a = Foo::C.into_api_error();
+    let a: ApiError = Foo::C.into();
     assert_eq!(a.code, 500);
     assert_eq!(a.internal_message, "c".to_owned());
     assert_eq!(a.external_message, "c".to_owned());
@@ -58,7 +58,7 @@ fn test_enum_c() {
 
 #[test]
 fn test_enum_delegated() {
-    let a = Foo::Delegated(Bar).into_api_error();
+    let a: ApiError = Foo::Delegated(Bar).into();
     assert_eq!(a.code, 500);
     assert_eq!(a.internal_message, "bar".to_owned());
     assert_eq!(a.external_message, "bar".to_owned());
