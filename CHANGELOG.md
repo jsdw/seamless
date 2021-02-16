@@ -1,3 +1,9 @@
+# v0.3.0
+
+- Rename and move things around so that they hopefully make more sense (see examples and such for specifics).
+- Remove the dependency on `ApiError` from various traits.
+- Tidy up export hierarchy.
+
 # v0.2.0
 
 - Allow the expected HTTP method for a route to be configured by implementors of the `Body` trait.

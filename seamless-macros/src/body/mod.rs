@@ -76,9 +76,9 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
                 if seen_nonunit_fields { return Err(unit_and_nonunit_cant_be_mixed()) }
 
                 quote!{{
-                    ::#crate_name::body::ApiBodyType {
+                    ::#crate_name::api::ApiBodyInfo {
                         description: #variant_docs.to_owned(),
-                        ty: ::#crate_name::body::Type::StringLiteral{ literal: #variant_ident_string.to_owned() }
+                        ty: ::#crate_name::api::ApiBodyType::StringLiteral{ literal: #variant_ident_string.to_owned() }
                     }
                 }}
             },
@@ -91,14 +91,14 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
 
                 let ty = &f.field.ty;
                 quote!{{
-                    let mut s = <#ty as ::#crate_name::body::ApiBodyStruct>::api_body_struct_type();
-                    s.struc.insert(#serde_tag.to_owned(), ::#crate_name::body::ApiBodyType {
+                    let mut s = <#ty as ::#crate_name::api::ApiBodyStruct>::api_body_struct_info();
+                    s.struc.insert(#serde_tag.to_owned(), ::#crate_name::api::ApiBodyInfo {
                         description: #VARIANT_DESCRIPTION.to_owned(),
-                        ty: ::#crate_name::body::Type::StringLiteral{ literal: #variant_ident_string.to_owned() }
+                        ty: ::#crate_name::api::ApiBodyType::StringLiteral{ literal: #variant_ident_string.to_owned() }
                     });
-                    let mut t = ::#crate_name::body::ApiBodyType {
+                    let mut t = ::#crate_name::api::ApiBodyInfo {
                         description: #variant_docs.to_owned(),
-                        ty: ::#crate_name::body::Type::Object{ keys: s.struc }
+                        ty: ::#crate_name::api::ApiBodyType::Object{ keys: s.struc }
                     };
                     // If no variant docs, use the inner struct docs instead:
                     if t.description.len() == 0 { t.description = s.description }
@@ -121,14 +121,14 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
                 // Generate a match arm for this variant:
                 quote!{{
                     let mut m = std::collections::HashMap::new();
-                    m.insert(#serde_tag.to_owned(), ::#crate_name::body::ApiBodyType {
+                    m.insert(#serde_tag.to_owned(), ::#crate_name::api::ApiBodyInfo {
                         description: #VARIANT_DESCRIPTION.to_owned(),
-                        ty: ::#crate_name::body::Type::StringLiteral{ literal: #variant_ident_string.to_owned() }
+                        ty: ::#crate_name::api::ApiBodyType::StringLiteral{ literal: #variant_ident_string.to_owned() }
                     });
                     #(#entries)*
-                    ::#crate_name::body::ApiBodyType {
+                    ::#crate_name::api::ApiBodyInfo {
                         description: #variant_docs.to_owned(),
-                        ty: ::#crate_name::body::Type::Object{ keys: m }
+                        ty: ::#crate_name::api::ApiBodyType::Object{ keys: m }
                     }
                 }}
             }
@@ -138,12 +138,12 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
 
     // Do we want to generate the serialize and deserialize impl?
     let serialize_toks = if attrs.serialize {
-        quote!{ #[derive(::#crate_name::body::Serialize)] }
+        quote!{ #[derive(::#crate_name::serde::Serialize)] }
     } else {
         TokenStream2::new()
     };
     let deserialize_toks = if attrs.deserialize {
-        quote!{ #[derive(::#crate_name::body::Deserialize)] }
+        quote!{ #[derive(::#crate_name::serde::Deserialize)] }
     } else {
         TokenStream2::new()
     };
@@ -166,11 +166,11 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
         #serde_tag_attr
         #sanitized_e
 
-        impl ::#crate_name::body::ApiBody for #ident {
-            fn api_body_type() -> ::#crate_name::body::ApiBodyType {
-                ::#crate_name::body::ApiBodyType {
+        impl ::#crate_name::api::ApiBody for #ident {
+            fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
+                ::#crate_name::api::ApiBodyInfo {
                     description: #top_level_docs.to_owned(),
-                    ty: ::#crate_name::body::Type::OneOf{
+                    ty: ::#crate_name::api::ApiBodyType::OneOf{
                         values:vec![ #(#ts_impl_variants),* ]
                     }
                 }
@@ -192,8 +192,8 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
         Fields::Single(f) => {
             let field_toks = quote_field(&f);
             quote!{
-                impl ::#crate_name::body::ApiBody for #ident {
-                    fn api_body_type() -> ::#crate_name::body::ApiBodyType {
+                impl ::#crate_name::api::ApiBody for #ident {
+                    fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
                         let mut t = #field_toks;
                         let d = #top_level_docs;
                         if d.len() > 0 { t.description = d.to_owned() }
@@ -208,11 +208,11 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
                 .map(quote_field)
                 .collect::<Vec<_>>();
             quote!{
-                impl ::#crate_name::body::ApiBody for #ident {
-                    fn api_body_type() -> ::#crate_name::body::ApiBodyType {
-                        ::#crate_name::body::ApiBodyType {
+                impl ::#crate_name::api::ApiBody for #ident {
+                    fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
+                        ::#crate_name::api::ApiBodyInfo {
                             description: #top_level_docs.to_owned(),
-                            ty: ::#crate_name::body::Type::TupleOf {
+                            ty: ::#crate_name::api::ApiBodyType::TupleOf {
                                 values: vec![ #( #types ),* ]
                             }
                         }
@@ -230,7 +230,7 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
                     // Get the field struct info and append all sub things to the map:
                     let ty = &f.field.ty;
                     quote!{{
-                        let s = <#ty as ::#crate_name::body::ApiBodyStruct>::api_body_struct_type();
+                        let s = <#ty as ::#crate_name::api::ApiBodyStruct>::api_body_struct_info();
                         for (key, val) in s.struc.into_iter() { m.insert(key, val); }
                     }}
                 } else {
@@ -241,22 +241,22 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
                 }
             }).collect::<Vec<_>>();
             quote!{
-                impl ::#crate_name::body::ApiBodyStruct for #ident {
-                    fn api_body_struct_type() -> ::#crate_name::body::ApiBodyStructType {
+                impl ::#crate_name::api::ApiBodyStruct for #ident {
+                    fn api_body_struct_info() -> ::#crate_name::api::ApiBodyStructInfo {
                         let mut m = std::collections::HashMap::new();
                         #(#entries)*
-                        ::#crate_name::body::ApiBodyStructType {
+                        ::#crate_name::api::ApiBodyStructInfo {
                             description: #top_level_docs.to_owned(),
                             struc: m
                         }
                     }
                 }
-                impl ::#crate_name::body::ApiBody for #ident {
-                    fn api_body_type() -> ::#crate_name::body::ApiBodyType {
-                        let s = <#ident as ::#crate_name::body::ApiBodyStruct>::api_body_struct_type();
-                        ::#crate_name::body::ApiBodyType {
+                impl ::#crate_name::api::ApiBody for #ident {
+                    fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
+                        let s = <#ident as ::#crate_name::api::ApiBodyStruct>::api_body_struct_info();
+                        ::#crate_name::api::ApiBodyInfo {
                             description: s.description,
-                            ty: ::#crate_name::body::Type::Object { keys: s.struc }
+                            ty: ::#crate_name::api::ApiBodyType::Object { keys: s.struc }
                         }
                     }
                 }
@@ -272,12 +272,12 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
 
     // Do we want to generate the serialize and deserialize impl?
     let serialize_toks = if attrs.serialize {
-        quote!{ #[derive(::#crate_name::body::Serialize)] }
+        quote!{ #[derive(::#crate_name::serde::Serialize)] }
     } else {
         TokenStream2::new()
     };
     let deserialize_toks = if attrs.deserialize {
-        quote!{ #[derive(::#crate_name::body::Deserialize)] }
+        quote!{ #[derive(::#crate_name::serde::Deserialize)] }
     } else {
         TokenStream2::new()
     };
@@ -309,7 +309,7 @@ fn quote_field(f: &Field) -> TokenStream2 {
     let ty = &f.field.ty;
     let docs = &f.attr_props.docs;
     quote!{{
-        let mut t = <#ty as ::#crate_name::body::ApiBody>::api_body_type();
+        let mut t = <#ty as ::#crate_name::api::ApiBody>::api_body_info();
         let d = #docs;
         if d.len() > 0 { t.description = d.to_owned(); }
         t

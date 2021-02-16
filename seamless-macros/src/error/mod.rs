@@ -27,8 +27,8 @@ pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
             return e.to_compile_error();
         }
         return quote! {
-            impl From<#struct_name> for #crate_name::error::ApiError {
-                fn from(s: #struct_name) -> #crate_name::error::ApiError {
+            impl From<#struct_name> for #crate_name::api::ApiError {
+                fn from(s: #struct_name) -> #crate_name::api::ApiError {
                     s.0.into()
                 }
             }
@@ -54,9 +54,9 @@ pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
     let code = syn::LitInt::new(&attrs.code.to_string(), Span::call_site());
 
     quote!{
-        impl From<#struct_name> for #crate_name::error::ApiError {
-            fn from(s: #struct_name) -> #crate_name::error::ApiError {
-                #crate_name::error::ApiError {
+        impl From<#struct_name> for #crate_name::api::ApiError {
+            fn from(s: #struct_name) -> #crate_name::api::ApiError {
+                #crate_name::api::ApiError {
                     code: #code,
                     internal_message: format!("{}", s),
                     external_message: #external_msg_tok,
@@ -120,7 +120,7 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
         };
 
         enum_items.extend(quote! {
-            #struct_name::#full_ident => #crate_name::error::ApiError {
+            #struct_name::#full_ident => #crate_name::api::ApiError {
                 code: #code,
                 internal_message: format!("{}", s),
                 external_message: #external_msg_tok,
@@ -131,8 +131,8 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
     }
 
     quote! {
-        impl From<#struct_name> for #crate_name::error::ApiError {
-            fn from(s: #struct_name) -> #crate_name::error::ApiError {
+        impl From<#struct_name> for #crate_name::api::ApiError {
+            fn from(s: #struct_name) -> #crate_name::api::ApiError {
                 match s {
                     #enum_items
                 }

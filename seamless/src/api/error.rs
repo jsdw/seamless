@@ -1,5 +1,3 @@
-//! A standard error type that describes what an erroneous API response should look like.
-
 /// This represents an API error that is returned from the API.
 #[derive(Debug,Clone,PartialEq)]
 pub struct ApiError {

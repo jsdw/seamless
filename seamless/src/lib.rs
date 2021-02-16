@@ -5,7 +5,7 @@
 //!
 //! ```
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
-//! use seamless::{ Api, ApiBody, ApiError, Json };
+//! use seamless::{ Api, ApiBody, ApiError, handler::body::{ Json } };
 //! use http::{ Request, Response };
 //!
 //! /* Step 1: Define some types that can be provided or handed back */
@@ -81,31 +81,21 @@
 //! # });
 //! ```
 
-pub mod router;
-pub mod error;
-pub mod body;
+pub mod handler;
+pub mod api;
+
+// Only exposed for seamless_macros; doesn't need to be documented
+#[doc(hidden)]
+pub mod serde;
 
 pub use seamless_macros::*;
 
 pub use async_trait::async_trait;
 
-pub use http::method::Method;
-
-pub use router::{
+pub use api::{
     Api,
-    Context,
-    RouteError,
-    RouteInfo,
-    Json,
-    Binary,
-};
-
-pub use body::{
     ApiBody,
+    ApiBodyInfo,
     ApiBodyType,
-    Type,
-};
-
-pub use error::{
-    ApiError,
+    ApiError
 };
