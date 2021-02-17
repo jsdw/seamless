@@ -1,5 +1,7 @@
 # Seamless
 
+[API Docs](https://docs.rs/seamless/latest/seamless)
+
 An opinionated library to easily plug RPC style JSON APIs into your existing HTTP framework.
 
 The main USP of this library is that it takes advantage of trait and macro magic to automatically infer
