@@ -16,7 +16,7 @@ pub trait RequestBody: Sized {
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
-    async fn get_body(req: Request<Vec<u8>>) -> Result<Self,Self::Error>;
+    async fn request_body(req: Request<Vec<u8>>) -> Result<Self,Self::Error>;
     /// Which HTTP method is required for this Body to be valid. By default, if a body
     /// is present in the handler we'll expect the method to be POST. Implement this function
     /// to override that.
@@ -34,7 +34,7 @@ pub struct Json<T> {
 #[async_trait]
 impl <T> RequestBody for Json<T> where T: DeserializeOwned {
     type Error = ApiError;
-    async fn get_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
+    async fn request_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
         let body = req.into_body();
         let json = serde_json::from_slice(&body)
             .map_err(|e| ApiError {
@@ -62,7 +62,7 @@ pub struct Binary {
 #[async_trait]
 impl RequestBody for Binary {
     type Error = ApiError;
-    async fn get_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
+    async fn request_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
         let bytes = req.into_body();
         Ok(Binary { bytes })
     }

@@ -194,7 +194,7 @@ checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
 
 [[package]]
 name = "seamless"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -211,10 +211,13 @@ dependencies = [
 
 [[package]]
 name = "seamless_macros"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "seamless",
+ "serde",
+ "serde_json",
  "syn",
 ]
 
@@ -309,6 +312,18 @@ dependencies = [
  "autocfg",
  "num_cpus",
  "pin-project-lite",
+ "tokio-macros",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caf7b11a536f46a809a8a9f0bb4237020f70ecbf115b842360afb127ea2fda57"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

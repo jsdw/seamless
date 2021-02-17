@@ -54,7 +54,8 @@ impl Api {
     ///    .description("This route takes some Foo's in and returns some Bar's")
     ///    .handler(|body: Json<String>| async move { Ok::<_,std::convert::Infallible>(body.json) });
     ///
-    /// // This route delegates to an async fn to sum some values, so we can infer more types in the handler.
+    /// // This route delegates to an async fn to sum some values, so we can infer more types in the
+    /// // handler.
     /// api.add("another.route")
     ///    .description("This route takes an array of values and sums them")
     ///    .handler(|body: Json<_>| sum(body.json));
@@ -70,6 +71,8 @@ impl Api {
     // Add a route given the individual parts (for internal use)
     fn add_parts<A, P: Into<String>, HandlerFn: IntoHandler<ApiError,A>>(&mut self, path: P, description: String, handler_fn: HandlerFn) {
         let resolved_handler = handler_fn.into_handler();
+        let mut path: String = path.into();
+        path = path.trim_matches('/').to_owned();
         self.routes.insert((resolved_handler.method.clone(), path.into()), ResolvedApiRoute {
             description,
             resolved_handler
@@ -179,7 +182,7 @@ impl <E> RouteError<E> {
     /// # Panics
     ///
     /// Panics if the RouteError does not contain an error
-    pub fn unwrap_api_error(self) -> E {
+    pub fn unwrap_err(self) -> E {
         match self {
             RouteError::Err(e) => e,
             _ => panic!("Attempt to unwrap_api_err on RouteError that is NotFound")
@@ -188,7 +191,7 @@ impl <E> RouteError<E> {
 }
 
 /// Information about a single route.
-#[derive(Debug,Clone,Serialize)]
+#[derive(Debug,Clone,PartialEq,Serialize)]
 pub struct RouteInfo {
     /// The name/path that the [`http::Request`] needs to contain
     /// in order to match this route.

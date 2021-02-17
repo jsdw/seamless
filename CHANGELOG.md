@@ -1,3 +1,9 @@
+# v0.4.0
+
+- Rename `RequestParam`'s `get_param` to `request_param`.
+- A couple of minor tweaks and trait impls.
+- Add more documentation.
+
 # v0.3.0
 
 - Rename and move things around so that they hopefully make more sense (see examples and such for specifics).

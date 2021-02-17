@@ -11,10 +11,6 @@ pub mod body;
 pub use body::{ RequestBody };
 pub use param::{ RequestParam };
 
-// This is used when implementing RequestBody and RequestParam,
-// so expose it here for convenience:
-pub use http::Method;
-
 // This is only ever exposed internally (used inside the api router),
 // so let's not expose it to the world:
 pub (crate) use handler::{ Handler };

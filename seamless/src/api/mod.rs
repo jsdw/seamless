@@ -10,8 +10,10 @@ pub use api::{ Api, RouteBuilder, RouteError, RouteInfo };
 pub use info::{ ApiBody, ApiBodyInfo, ApiBodyType };
 pub use error::{ ApiError };
 
-// For convenience, since these are used a fair bit:
-pub use http::{ Request, Response };
+// Export these on top of the types, so that you don't need to
+// import `seamless::api::ApiBody` AND `seamless::ApiBody` for
+// instance:
+pub use seamless_macros::{ ApiBody, ApiError };
 
 // These are used in seamless_macros but are not expected to
 // be made use of elsewhere and so are hidden from the docs:

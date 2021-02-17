@@ -4,7 +4,13 @@ Follow these steps to publish a new version
 
 ## Test
 
-Make sure tests pass with `cargo test`.
+Make sure tests pass and examples happily run:
+
+```
+cargo test
+cargo run --example basic
+cargo run --example info
+```
 
 ## Check the docs
 

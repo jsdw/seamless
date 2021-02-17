@@ -65,14 +65,14 @@ macro_rules! resolve_for_contexts {
 
                         $(
                         #[allow(non_snake_case)]
-                        let $ctx = $ctx::get_param(&bodyless_req)
+                        let $ctx = $ctx::request_param(&bodyless_req)
                             .await
                             .map_err(|e| { let e: OutputErr = e.into(); e })?;
                         )*
 
                         let (parts, _) = bodyless_req.into_parts();
                         let req = Request::from_parts(parts, body);
-                        let body = Req::get_body(req).await.map_err(|e| { let e: OutputErr = e.into(); e })?;
+                        let body = Req::request_body(req).await.map_err(|e| { let e: OutputErr = e.into(); e })?;
                         let handler_res = inner_handler($($ctx,)* body)
                             .await
                             .map_err(|e| { let e: OutputErr = e.into(); e })?;
@@ -115,7 +115,7 @@ macro_rules! resolve_for_contexts {
 
                         $(
                         #[allow(non_snake_case)]
-                        let $ctx = $ctx::get_param(&bodyless_req)
+                        let $ctx = $ctx::request_param(&bodyless_req)
                             .await
                             .map_err(|e| { let e: OutputErr = e.into(); e })?;
                         )*

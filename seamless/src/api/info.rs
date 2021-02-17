@@ -136,9 +136,20 @@ pub trait ApiBodyStruct {
     fn api_body_struct_info() -> ApiBodyStructInfo;
 }
 
+impl <T: ApiBodyStruct> ApiBodyStruct for Box<T> {
+    fn api_body_struct_info() -> ApiBodyStructInfo {
+        T::api_body_struct_info()
+    }
+}
 
 // *** Below are the various built-in implementations of ApiBodyInfo ***
 
+// Boxing:
+impl <T: ApiBody> ApiBody for Box<T> {
+    fn api_body_info() -> ApiBodyInfo {
+        T::api_body_info()
+    }
+}
 
 // Basic collections:
 impl <T: ApiBody> ApiBody for Vec<T> {
