@@ -32,7 +32,7 @@
 //!   use case. Keeping parameters in the body allows us to type them properly; this would be much more
 //!   difficult to do with query params. Think of this library as more RPC, less REST.
 //!
-//! # Example
+//! # A Basic Example
 //!
 //! Below is a basic self contained example of using this library. Please have a look in the `examples`
 //! folder for more detailed examples.
@@ -185,6 +185,111 @@
 //! assert!(api.handle(req).await.is_ok());
 //! # })
 //! ```
+//!
+//! # Info
+//!
+//! At some point, you may want to get information about the shape of the API so that you can go
+//! and generate a typed API client. To do this, use the [`Api::info()`] function.
+//!
+//! Probably the best way to see what shapes this info can take is by looking at `api/info.rs`.
+//!
+//! Here's an example:
+//!
+//! ```rust
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! use seamless::{
+//!     api::{ Api, ApiBody, ApiError },
+//!     handler::body::{ Json },
+//! };
+//! use serde_json::json;
+//!
+//! #[derive(ApiError, Debug, thiserror::Error)]
+//! enum MathsError {
+//!     #[error("Division by zero")]
+//!     #[api_error(external, code=400)]
+//!     DivideByZero
+//! }
+//!
+//! /// Input consisting of two numbers
+//! #[ApiBody]
+//! struct BinaryInput {
+//!     /// Input 'a'
+//!     a: usize,
+//!     /// Input 'b'
+//!     b: usize
+//! }
+//!
+//! /// Output containing the original input and result
+//! #[ApiBody]
+//! #[derive(PartialEq)]
+//! struct BinaryOutput {
+//!     a: usize,
+//!     b: usize,
+//!     /// The result
+//!     result: usize
+//! }
+//!
+//! async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
+//!     todo!()
+//! }
+//!
+//! // A small APi with one route:
+//! let mut api = Api::new();
+//! api.add("maths/divide")
+//!     .description("Divide two numbers by each other")
+//!     .handler(|body: Json<_>| divide(body.json));
+//!
+//! // Get info about this API:
+//! let info = api.info();
+//!
+//! // Here's what this will look like when serialized to JSON:
+//! let info_json = json!([
+//!     {
+//!         "name": "maths/divide",
+//!         "description": "Divide two numbers by each other",
+//!         "method": "POST",
+//!         "request_type": {
+//!             "description": "Input consisting of two numbers",
+//!             "shape": {
+//!                 "type": "Object",
+//!                 "keys": {
+//!                     "a": {
+//!                         "description": "Input 'a'",
+//!                         "shape": { "type": "Number" }
+//!                     },
+//!                     "b": {
+//!                         "description": "Input 'b'",
+//!                         "shape": { "type": "Number" }
+//!                     }
+//!                 }
+//!             }
+//!         },
+//!         "response_type": {
+//!             "description": "Output containing the original input and result",
+//!             "shape": {
+//!                 "type": "Object",
+//!                 "keys": {
+//!                     "a": {
+//!                         "description": "",
+//!                         "shape": { "type": "Number" }
+//!                     },
+//!                     "b": {
+//!                         "description": "",
+//!                         "shape": { "type": "Number" }
+//!                     },
+//!                     "result": {
+//!                         "description": "The result",
+//!                         "shape": { "type": "Number" }
+//!                     }
+//!                 }
+//!             }
+//!         }
+//!     }
+//! ]);
+//! # assert_eq!(serde_json::to_value(info).unwrap(), info_json);
+//! # })
+//! ```
+
 
 pub mod handler;
 pub mod api;

@@ -1,3 +1,7 @@
+# v0.5.1
+
+- Document getting API info. No breaking changes.
+
 # v0.5.0
 
 - `RequestParam` and `RequestBody` renamed to `HandlerParam` and `HandlerBody`, and their methods renamed following a similar convention.
