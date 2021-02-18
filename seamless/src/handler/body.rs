@@ -8,19 +8,19 @@ use async_trait::async_trait;
 /// that implements this is used to determine the input type expected by the handler
 /// for the sake of generating API information.
 #[async_trait]
-pub trait RequestBody: Sized {
+pub trait HandlerBody: Sized {
     /// An error indicating what went wrong in the event that we fail to extract
     /// our body from the provided request.
-    type Error: 'static;
+    type Error: Into<ApiError> + 'static;
     /// Given a request containing arbitrary bytes, this function needs to return an
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
-    async fn request_body(req: Request<Vec<u8>>) -> Result<Self,Self::Error>;
+    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,Self::Error>;
     /// Which HTTP method is required for this Body to be valid. By default, if a body
     /// is present in the handler we'll expect the method to be POST. Implement this function
     /// to override that.
-    fn get_method() -> Method { Method::POST }
+    fn handler_method() -> Method { Method::POST }
 }
 
 /// If the last argument to a handler is this, we'll assume
@@ -32,9 +32,9 @@ pub struct Json<T> {
     pub json: T
 }
 #[async_trait]
-impl <T> RequestBody for Json<T> where T: DeserializeOwned {
+impl <T> HandlerBody for Json<T> where T: DeserializeOwned {
     type Error = ApiError;
-    async fn request_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
+    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
         let body = req.into_body();
         let json = serde_json::from_slice(&body)
             .map_err(|e| ApiError {
@@ -60,9 +60,9 @@ pub struct Binary {
     pub bytes: Vec<u8>
 }
 #[async_trait]
-impl RequestBody for Binary {
+impl HandlerBody for Binary {
     type Error = ApiError;
-    async fn request_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
+    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
         let bytes = req.into_body();
         Ok(Binary { bytes })
     }

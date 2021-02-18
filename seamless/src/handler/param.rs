@@ -1,5 +1,6 @@
 use http::{ Request };
 use async_trait::async_trait;
+use crate::api::ApiError;
 
 /// Implement this for anything that you want to be able to pass into a request
 /// handler that doesn't want to consume the body of the request. This is
@@ -10,7 +11,7 @@ use async_trait::async_trait;
 /// # Example
 ///
 /// ```
-/// # use seamless::handler::RequestParam;
+/// # use seamless::handler::HandlerParam;
 /// # use seamless::http::Request;
 /// # use seamless::api::ApiError;
 /// # struct State;
@@ -24,9 +25,9 @@ use async_trait::async_trait;
 ///
 /// // Make it possible to ask for the current user in a request:
 /// #[seamless::async_trait]
-/// impl RequestParam for User {
+/// impl HandlerParam for User {
 ///     type Error = ApiError;
-///     async fn request_param(req: &Request<()>) -> Result<Self,Self::Error> {
+///     async fn handler_param(req: &Request<()>) -> Result<Self,Self::Error> {
 ///         // We can put things (like DB connections) into requests before they
 ///         // are handed to the API, and then pluck them out here to use:
 ///         let state = req.extensions()
@@ -38,7 +39,7 @@ use async_trait::async_trait;
 /// }
 /// ```
 #[async_trait]
-pub trait RequestParam where Self: Sized {
+pub trait HandlerParam where Self: Sized {
     /// An error indicating what went wrong in the event that we fail to extract
     /// our parameter from the provided request.
     ///
@@ -46,29 +47,29 @@ pub trait RequestParam where Self: Sized {
     /// (the [`macro@crate::ApiError`] macro can be used to gelp with this).
     ///
     /// It can be simpler just to set this to `ApiError` directly.
-    type Error: 'static;
+    type Error: Into<ApiError> + 'static;
     /// Given a [`http::Request<()>`], return a value of type `T` back, or
     /// else return an error of type `E` describing what went wrong. Any errors
     /// here will lead to the route bailing out and the handler not being run.
-    async fn request_param(req: &Request<()>) -> Result<Self,Self::Error>;
+    async fn handler_param(req: &Request<()>) -> Result<Self,Self::Error>;
 }
 
-// Option<Body> means we'll return None to the handler if request_param would fail.
+// Option<Body> means we'll return None to the handler if handler_param would fail.
 // This will never error.
 #[async_trait]
-impl <T: RequestParam> RequestParam for Option<T> {
+impl <T: HandlerParam> HandlerParam for Option<T> {
     type Error = std::convert::Infallible;
-    async fn request_param(req: &Request<()>) -> Result<Self,Self::Error> {
-        Ok(T::request_param(req).await.ok())
+    async fn handler_param(req: &Request<()>) -> Result<Self,Self::Error> {
+        Ok(T::handler_param(req).await.ok())
     }
 }
 
 // Result<Context,Err> means we'll return the result of attempting to obtain the context.
 // This will never error.
 #[async_trait]
-impl <T: RequestParam> RequestParam for Result<T,<T as RequestParam>::Error> {
-    type Error = <T as RequestParam>::Error;
-    async fn request_param(req: &Request<()>) -> Result<Self,Self::Error> {
-        Ok(T::request_param(req).await)
+impl <T: HandlerParam> HandlerParam for Result<T,<T as HandlerParam>::Error> {
+    type Error = <T as HandlerParam>::Error;
+    async fn handler_param(req: &Request<()>) -> Result<Self,Self::Error> {
+        Ok(T::handler_param(req).await)
     }
 }

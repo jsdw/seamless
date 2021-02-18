@@ -2,51 +2,46 @@
 
 [API Docs](https://docs.rs/seamless/latest/seamless)
 
-An opinionated library to easily plug RPC style JSON APIs into your existing HTTP framework.
+An opinionated library to easily plug RPC style JSON APIs into your existing HTTP framework to enable
+type safe communication with TypeScript (or similar) clients.
 
 The main USP of this library is that it takes advantage of trait and macro magic to automatically infer
-the shape of the API (paths, descriptions, and the type of request and response for each route) from the
-Rust code, without requiring any external API definition to be created or maintained. This allows one to
-generate (as one example) a TypeScript based API client to allow type safe communication from a browser.
+the shape of the API (paths, descriptions, and the types of request and response for each route) from
+just the Rust code you've written, negating the need for external definitions like OpenAPI.
 
-# Introduction
+# Pros & Cons
 
 Seamless is a library primarily designed to facilitate communication between a Rust backend
 and a TypeScript (or similar) client via JSON. By using this library you get:
 - The ablity to use any async framework of your choice without feature flags and such.
 - A self describing API that can automatically provide back enough information to generate
-  a fully typed client in a language like TypeScript. This works by using the provided
-  [`macro@ApiBody`] macro to analyse structs and enums and ensure that type information is in sync with
-  how `serde` will Serialize/Deserialize it, along with some trait magic applied to handlers.
-- Consistent error handling: All errors returned from the API must be convertable into an
-  [`type@ApiError`] type. This behaviour can be derived using the provided [`macro@ApiError`] macro
-  to make it easy to work with domain specific errors in the backend and then describe how they
-  should be presented to end users.
-- The ability to guard requests using the [`handler::RequestParam`] trait to asynchronously attempt to load
-  things from an incoming request, and only calling the request handler if all such loads succeed.
-  This is useful for loading things like user information, to guarantee that a valid user exists
-  before a handler function can run.
+  a fully typed client in a language like TypeScript. This leans on a [`macro@ApiBody`] macro
+  which is placed on structs/enums you'd like to receive or return from the API, along with trait
+  magic.
+- Consistent error handling: You can return whatever domain specific errors you like from handlers,
+  so long as they implement `Into<ApiError>`. The provided [`macro@ApiError`] macro makes this simple.
+- The ability to pull in state or guard requests using the [`handler::HandlerParam`] trait. With this
+  trait, handlers can ask for whatever parameters they need, and know that they won't run if those
+  parameters cannot be obtained (for example, an invalid user session was provided).
 
 This library also has limitations, some of them being:
-- Facilities for creating more 'RESTful' APIs may be more sparse (you _can_ create a RESTful API with
-  this, but the library is optimised for APIs that are more fluid and RPC like in nature).
-- Streaming of request and response bodies is not supported. Currently the library assumes you'll be
-  primarily working with JSON (that doesn't stream so well) or small binary blobs, and doesn't expose
+- Streaming of request and response bodies is not supported. Currently the library doesn't expose
   means to stream data in and our of handlers for the sake of simplicity (instead, everything comes in
-  and leaves as a `Vec<u8>`).
+  and leaves as a `Vec<u8>`). This is simple to use, but large data transfers should happen
+  outside of this library.
 - Type information from the [`Api::info()`] method is tuned towards generating TypeScript client
-  code, and is not sufficiently detailed to, for instance, generate a suitable Rust client.
-- API handlers all take the form `async fn(...params) -> Result<response,impl Into<ApiError>>` at
-  present. You can wrangle anything into this shape by using [`std::convert::Infallible`] as the error
-  type if there is none, and using `async move` closures to "asyncify" sync handlers. Sometimes you'll
-  need to explicitly type things to give the compiler enough to work with.
+  code, and cannot provide enough detail to generate, for example, a well typed Rust client.
+- No support for more complex URL matching (eg to extract query params). I don't intend to support this
+  use case. Keeping parameters in the body allows us to type them properly; this would be much more
+  difficult to do with query params. Think of this library as more RPC, less REST.
 
 # Example
 
-Below is a fully self contained example of using this library. Please have a look in the `examples`
+Below is a basic self contained example of using this library. Please have a look in the `examples`
 folder for more detailed examples.
 
 ```rust
+# tokio::runtime::Runtime::new().unwrap().block_on(async {
 use seamless::{
     http::{ Request },
     api::{ Api, ApiBody, ApiError },
@@ -125,4 +120,71 @@ assert_eq!(
         value: None
     }
 );
+# });
+```
+
+# State
+
+Most real life use cases will require some sort of state to be accessible inside a handler.
+
+
+This library follows an approach a little similar to `Rocket`. Any type that implements the
+[`handler::HandlerParam`] trait can be passed into handler functions. To pass state in, you can
+inject it into the `http::Request` prior to handing it to this library, and then extract it out
+of the request again in the [`handler::HandlerParam`] implementation.
+
+**Note**: params implementing the `RequestParam` trait must come before the one that implements
+`RequestBody` (if any) in the handler function argument list.
+
+Here's an example:
+
+```rust
+use seamless::{
+    api::{ Api, ApiBody, ApiError },
+    handler::{ HandlerParam, body::{ Json } },
+};
+# #[ApiBody]
+# struct BinaryInput { a: usize, b: usize }
+# #[ApiBody]
+# #[derive(PartialEq)]
+# struct BinaryOutput {}
+# async fn divide(input: BinaryInput) -> Option<BinaryOutput> { Some(BinaryOutput {}) }
+# tokio::runtime::Runtime::new().unwrap().block_on(async {
+
+// Something we want to inject into our handler.
+#[derive(Clone)]
+struct State;
+
+// Teach the library how to get hold of State when asked for it.
+#[seamless::async_trait]
+impl HandlerParam for State {
+    type Error = ApiError;
+    async fn handler_param(req: &http::Request<()>) -> Result<Self,Self::Error> {
+        let state: State = req.extensions().get::<State>()
+            .expect("State must be injected into the request")
+            .clone();
+        Ok(state)
+    }
+}
+
+let mut api = Api::new();
+
+// Note that we can now ask for `State` as a parameter to the handler. State
+// MUST come before our `Json<_>` parameter. `HandlerParam` impls are evaluated
+// in the order that arguments appear in the parameter list.
+api.add("maths/divide")
+    .description("Divide two numbers by each other")
+    .handler(|_state: State, body: Json<_>| divide(body.json));
+
+// When passing a request into our API, remember to inject `State` so that
+// it's available for our `HandlerParam` trait to extract:
+let mut req = http::Request::post("/maths/divide")
+    .body(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap())
+    .unwrap();
+
+req.extensions_mut().insert(State);
+
+// We can now handle the request without issues:
+assert!(api.handle(req).await.is_ok());
+# })
 ```

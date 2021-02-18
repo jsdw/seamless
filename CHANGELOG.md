@@ -1,3 +1,9 @@
+# v0.5.0
+
+- `RequestParam` and `RequestBody` renamed to `HandlerParam` and `HandlerBody`, and their methods renamed following a similar convention.
+- Handler functions can now be either async or non-async, and return `Result`s or `Option`s.
+- Doc and example improvements around state.
+
 # v0.4.0
 
 - Rename `RequestParam`'s `get_param` to `request_param`.
@@ -12,8 +18,7 @@
 
 # v0.2.0
 
-- Allow the expected HTTP method for a route to be configured by implementors of the `Body` trait.
-  (previously it was always POST if a `Body` was provided, else GET).
+- Allow the expected HTTP method for a route to be configured by implementors of the `Body` trait. (previously it was always POST if a `Body` was provided, else GET).
 - Remove `IntoApiError` and implement `From<T>` as appropriate instead.
 - Remove `Method` enum and use `http::method::Method` in its place.
 

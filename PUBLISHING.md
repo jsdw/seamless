@@ -10,6 +10,7 @@ Make sure tests pass and examples happily run:
 cargo test
 cargo run --example basic
 cargo run --example info
+cargo run --example state
 ```
 
 ## Check the docs
@@ -19,6 +20,8 @@ Make sure that the documentation is gravy
 ```
 cargo doc --open
 ```
+
+Copy any doc changes from `seamless/lib.rs` to `seamless/README.md` and `README.md`.
 
 ## Bump versions
 

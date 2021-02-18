@@ -10,13 +10,13 @@ use crate::handler::{ Handler, IntoHandler };
 /// using [`Self::info()`], or handle an [`http::Request`] using [`Self::handle()`].
 pub struct Api {
     base_path: String,
-    routes: HashMap<(Method,String),ResolvedApiRoute<ApiError>>
+    routes: HashMap<(Method,String),ResolvedApiRoute>
 }
 
 // An API route has the contents of `ResolvedHandler` but also a description.
-struct ResolvedApiRoute<E> {
+struct ResolvedApiRoute {
     description: String,
-    resolved_handler: Handler<E>
+    resolved_handler: Handler
 }
 
 impl Api {
@@ -69,7 +69,7 @@ impl Api {
     }
 
     // Add a route given the individual parts (for internal use)
-    fn add_parts<A, P: Into<String>, HandlerFn: IntoHandler<ApiError,A>>(&mut self, path: P, description: String, handler_fn: HandlerFn) {
+    fn add_parts<A, P: Into<String>, HandlerFn: IntoHandler<A>>(&mut self, path: P, description: String, handler_fn: HandlerFn) {
         let resolved_handler = handler_fn.into_handler();
         let mut path: String = path.into();
         path = path.trim_matches('/').to_owned();
@@ -159,7 +159,7 @@ impl <'a> RouteBuilder<'a> {
     }
     /// Add a handler to the API route. Until this has been added, the route
     /// doesn't "exist".
-    pub fn handler<A, HandlerFn: IntoHandler<ApiError,A>>(self, handler: HandlerFn) {
+    pub fn handler<A, HandlerFn: IntoHandler<A>>(self, handler: HandlerFn) {
         self.api.add_parts(self.path, self.description, handler);
     }
 }

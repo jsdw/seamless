@@ -26,7 +26,7 @@ async fn main() {
         .handler(|body: Json<_>| multiply(body.json));
     api.add("meta/status")
         .description("Get the current API status")
-        .handler(|| status());
+        .handler(status);
 
     // Now, we can handle incoming requests. Let's test a couple:
     //
@@ -98,6 +98,7 @@ struct BinaryOutput {
     result: usize
 }
 
+// We can have async handlers that return Results..
 async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
     let a = input.a;
     let b = input.b;
@@ -106,7 +107,8 @@ async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
         .map(|result| BinaryOutput { a, b, result })
 }
 
-async fn multiply(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
+// ..or sync handlers that return results..
+fn multiply(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
     let a = input.a;
     let b = input.b;
     Ok(BinaryOutput { a, b, result: a * b })
@@ -124,8 +126,9 @@ enum StatusValue {
     NotOk
 }
 
-async fn status() -> Result<Status, std::convert::Infallible> {
-    Ok(Status {
+// ..or async/sync handlers that return Options..
+fn status() -> Option<Status> {
+    Some(Status {
         status: StatusValue::Ok
     })
 }

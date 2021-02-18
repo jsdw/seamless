@@ -194,14 +194,14 @@ checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
 
 [[package]]
 name = "seamless"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb17196595784dd487232fdd493f098c34effe46abe8afe8e1cb366f659f4602"
+checksum = "c9192b1e62c2941df5a13a70356b993d05d06002b9697946f0b64dac13b76a0f"
 dependencies = [
  "async-trait",
  "chrono",
  "http",
- "seamless_macros 0.3.0",
+ "seamless_macros 0.4.0",
  "serde",
  "serde_json",
  "uuid",
@@ -209,13 +209,13 @@ dependencies = [
 
 [[package]]
 name = "seamless"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "chrono",
  "http",
  "pretty_assertions",
- "seamless_macros 0.4.0",
+ "seamless_macros 0.5.0",
  "serde",
  "serde_json",
  "thiserror",
@@ -226,9 +226,9 @@ dependencies = [
 
 [[package]]
 name = "seamless_macros"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcde4b703dd2c5b6a7def3c38afe1d16ff745097b3b8e33137d863b517babac5"
+checksum = "d3fc6ae1b226ec3d5060a5b9c6b7f8ddf892b444180f792c7c7a6e8e8a05166b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -237,11 +237,11 @@ dependencies = [
 
 [[package]]
 name = "seamless_macros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "proc-macro2",
  "quote",
- "seamless 0.3.0",
+ "seamless 0.4.0",
  "serde",
  "serde_json",
  "syn",
