@@ -2,25 +2,25 @@
 
 [API Docs](https://docs.rs/seamless/latest/seamless)
 
-The main goal of this library is to allow typesafe communication and documentation generation between TypeScript
-and your Rust API. This can be autoamtically derived from just the Rust code, without any external definitions
-like OpenAPI being needed. The steps for using this library are:
+The main goal of this library is to allow typesafe communication (and to a degree, documentation) generation
+between TypeScript and your Rust API. Using this library, that can all be automatically derived from just the
+Rust code, without any external definitions like OpenAPI being needed. The steps for using this library are:
 
-- Declare your API routes using this library.
-- Input and output types for these routes are annotated with the [`macro@ApiBody`] macro.
-- Errors must derive `Into<ApiError>`, which is made easy using the [`macro@ApiError`] macro.
-- API handlers ask for whatever they need, including state or user info based on the incoming request.
-- Once the API routes are declared, you can programatically obtain enough information about the API to
-  generate fully type safe client code (the information is optimised towards generating TypeScript types).
-- Typically you'll integrate this API with something like `warp` or `rocket` so that it can live alongside
-  other routes, for example those for static file or template serving.
+- Annotate your input and output types for these routes with the [`macro@ApiBody`] macro.
+- Derive [`macro@ApiError`] (or manually implement `Into<ApiError`) on any errors you wish to emit.
+- Declare each of your API routes using this library. API handlers can just ask for whatever they need as a
+  function parameter, including state or user info based on the incoming request.
+- Once the API routes are declared, use [`Api::info()`] to obtain enough information about the API to
+  generate fully type safe client code (the information is optimised towards generating TypeScript types/code).
+- Integrate this API with something like `warp` or `rocket` so that your `seamless` API routes can live alongside
+  everything else that you'd like to serve.
 
-Have a look at the examples in the `examples` directory to get a feel for how this library is used, or keep reading!
+Have a look at the examples in the `examples` directory to get a proper feel for how this library can be used, or
+keep reading!
 
 # A Basic Example
 
-Below is a basic self contained example of using this library. Please have a look in the `examples`
-folder for more detailed examples.
+Below is a basic self contained example of using this library.
 
 ```rust
 # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -63,7 +63,8 @@ let mut api = Api::new();
 
 // We add routes to our new API like so. The handler functions would often be defined separately and
 // called from this handler. Handler functions can be async or sync, and can return either a `Result`
-// or an `Option` where the success value is an `ApiBody` and the error an `Into<ApiError>`.
+// or an `Option` where the success value is an `ApiBody` and the error an `Into<ApiError>`. Often,
+// you'll find that types can be inferred, and so you can use `Json<_>` if you prefer in those cases.
 api.add("/echo")
     .description("Echoes back a JSON string")
     .handler(|body: Json<String>| Some(body.json));
@@ -81,8 +82,8 @@ api.add("/maths.divide")
    });
 
 // Once we've added routes to the `api`, we use it by sending `http::Request`s to it.
-// Below, we give the API a quick test and assert that we get back what we expect when
-// we do this.
+// Since we're expecting JSON to be provided, we need to remember to set the correct
+// content-type:
 
 let req = Request::post("/maths.divide")
     .header("content-type", "application/json")
@@ -103,9 +104,6 @@ This library follows an approach a little similar to `Rocket`. Any type that imp
 [`handler::HandlerParam`] trait can be passed into handler functions. Using this trait, you can
 inspect the request to do things like obtain user information from a session ID, or you can pull
 state out of the `Request` object that was placed there prior to it being handed to this library.
-
-**Note**: params implementing the `RequestParam` trait must come before the one that implements
-`RequestBody` (if any) in the handler function argument list.
 
 Here's an example:
 
@@ -160,6 +158,10 @@ req.extensions_mut().insert(State);
 assert!(api.handle(req).await.is_ok());
 # })
 ```
+
+**Note**: params implementing the [`handler::HandleParam`] trait must come before the optional final param
+that implements [`handler::HandlerBody`]. Params are resolved in order, with the first failure short circuiting
+the rest.
 
 # Info
 
@@ -266,26 +268,31 @@ let info_json = json!([
 # })
 ```
 
+The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`, `Any`, `ArrayOf`, `TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come with an additional property.
+See `seamless/src/api/info.rs` to get a better feel for exactly what the possible responses can be.
+
 # Integrating with other libraries
 
 Instead of passing requests in manually, you'll probably want to attach an API you define here to a library like
 `Rocket` or `Warp` (or perhaps just plain old `Hyper`) so that you can benefit from the full power and flexibility
-of a well rounded HTTP library alongside your well typed `seamless` API.
+of a well rounded HTTP library alongside your well typed `seamless` API, and actually make the API available
+externally.
 
 See `examples/warp.rs` and `examples/rocket.rs` for examples of how you might integrate this library with those.
 Essentially it boils down to being able to construct an `http::Request` from whatever input the library gives you
-access to, and being able to handle the `http::Response` or error that's handed back with your library of choice.
+access to, and being able to handle the `http::Response` or error that's handed back from Seamless.
 
 # Limitations
 
-Seamless is designed to make it easy to create simple RPC style JSON APIs that can be seamlessly typed from client
+Seamless is designed to make it easy to create simple RPC style JSON APIs that can be "seamlessly" typed from client
 to server without using external tools like OpenAPI.
 
 - Seamless has not been optimised for building RESTful style APIs (notably, the ability to work with query params is
 lacking, because they do not play nicely with the type safety that this library tries to provide).
 - Some of the flexiblity that `Serde` provides for manipulating how types are serialized and deserialized is not
-available. This library takes the approach of 'wrapping' serde using the `ApiBody` macro to ensure that the type
-information generated matches the actual JSON you get back.
+available. This library takes the approach of 'wrapping' serde using the [`macro@ApiBody`] macro to deliberately restrict
+how you can transform types, ensuring that any transformations allowed are properly supported and lead to the correct
+type information being generated.
 - Streaming request and response bodies back from seamless is currently not supported. For simplicity, bodies are
 expected to be `Vec<u8>`s so that the yare easy to work with. It's expected that JSON will be the main method by
 which this library inputs and outputs data, and JSON doesn't stream well naturally, so this does not seem like a big
