@@ -35,6 +35,17 @@ pub struct Json<T> {
 impl <T> HandlerBody for Json<T> where T: DeserializeOwned {
     type Error = ApiError;
     async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
+        let content_type = req.headers()
+            .get(http::header::CONTENT_TYPE)
+            .ok_or_else(content_type_not_json_err)?;
+        let content_type_is_json = content_type
+            .to_str()
+            .map(|s| s.to_ascii_lowercase() == "application/json")
+            .unwrap_or(false);
+        if !content_type_is_json {
+            return Err(content_type_not_json_err())
+        }
+
         let body = req.into_body();
         let json = serde_json::from_slice(&body)
             .map_err(|e| ApiError {
@@ -49,6 +60,15 @@ impl <T> HandlerBody for Json<T> where T: DeserializeOwned {
 impl <T> ApiBody for Json<T> where T: ApiBody {
     fn api_body_info() -> ApiBodyInfo {
         T::api_body_info()
+    }
+}
+
+fn content_type_not_json_err() -> ApiError {
+    ApiError {
+        code: 415,
+        internal_message: "Content-Type must be application/json".to_string(),
+        external_message: "Content-Type must be application/json".to_string(),
+        value: None
     }
 }
 

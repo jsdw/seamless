@@ -44,6 +44,7 @@ async fn main() {
     // When passing a request into our API, remember to inject `State` so that
     // it's available for our `HandlerParam` trait to extract:
     let mut req = http::Request::post("/maths/divide")
+        .header("content-type", "application/json")
         .body(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap())
         .unwrap();
 
@@ -90,4 +91,10 @@ async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
     a.checked_div(b)
         .ok_or(MathsError::DivideByZero)
         .map(|result| BinaryOutput { a, b, result })
+}
+
+// Make sure the example is valid when runnign cargo test
+#[test]
+fn test_main() {
+    main()
 }

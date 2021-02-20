@@ -113,3 +113,9 @@ async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
         .ok_or(MathsError::DivideByZero)
         .map(|result| BinaryOutput { a, b, result })
 }
+
+// Make sure the example is valid when runnign cargo test
+#[test]
+fn test_main() {
+    main()
+}

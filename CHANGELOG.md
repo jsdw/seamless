@@ -1,3 +1,8 @@
+# v0.6.0
+
+- Require 'content-type: application/json' when requestion a `Json<_>` body in a handler.
+- Add more documentation around integrating, and more doc improvements.
+
 # v0.5.1
 
 - Document getting API info. No breaking changes.

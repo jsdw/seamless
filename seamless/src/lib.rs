@@ -1,36 +1,18 @@
 #![warn(missing_docs)]
-//! An opinionated library to easily plug RPC style JSON APIs into your existing HTTP framework to enable
-//! type safe communication with TypeScript (or similar) clients.
+//! The main goal of this library is to allow typesafe communication and documentation generation between TypeScript
+//! and your Rust API. This can be autoamtically derived from just the Rust code, without any external definitions
+//! like OpenAPI being needed. The steps for using this library are:
 //!
-//! The main USP of this library is that it takes advantage of trait and macro magic to automatically infer
-//! the shape of the API (paths, descriptions, and the types of request and response for each route) from
-//! just the Rust code you've written, negating the need for external definitions like OpenAPI.
+//! - Declare your API routes using this library.
+//! - Input and output types for these routes are annotated with the [`macro@ApiBody`] macro.
+//! - Errors must derive `Into<ApiError>`, which is made easy using the [`macro@ApiError`] macro.
+//! - API handlers ask for whatever they need, including state or user info based on the incoming request.
+//! - Once the API routes are declared, you can programatically obtain enough information about the API to
+//!   generate fully type safe client code (the information is optimised towards generating TypeScript types).
+//! - Typically you'll integrate this API with something like `warp` or `rocket` so that it can live alongside
+//!   other routes, for example those for static file or template serving.
 //!
-//! # Pros & Cons
-//!
-//! Seamless is a library primarily designed to facilitate communication between a Rust backend
-//! and a TypeScript (or similar) client via JSON. By using this library you get:
-//! - The ablity to use any async framework of your choice without feature flags and such.
-//! - A self describing API that can automatically provide back enough information to generate
-//!   a fully typed client in a language like TypeScript. This leans on a [`macro@ApiBody`] macro
-//!   which is placed on structs/enums you'd like to receive or return from the API, along with trait
-//!   magic.
-//! - Consistent error handling: You can return whatever domain specific errors you like from handlers,
-//!   so long as they implement `Into<ApiError>`. The provided [`macro@ApiError`] macro makes this simple.
-//! - The ability to pull in state or guard requests using the [`handler::HandlerParam`] trait. With this
-//!   trait, handlers can ask for whatever parameters they need, and know that they won't run if those
-//!   parameters cannot be obtained (for example, an invalid user session was provided).
-//!
-//! This library also has limitations, some of them being:
-//! - Streaming of request and response bodies is not supported. Currently the library doesn't expose
-//!   means to stream data in and our of handlers for the sake of simplicity (instead, everything comes in
-//!   and leaves as a `Vec<u8>`). This is simple to use, but large data transfers should happen
-//!   outside of this library.
-//! - Type information from the [`Api::info()`] method is tuned towards generating TypeScript client
-//!   code, and cannot provide enough detail to generate, for example, a well typed Rust client.
-//! - No support for more complex URL matching (eg to extract query params). I don't intend to support this
-//!   use case. Keeping parameters in the body allows us to type them properly; this would be much more
-//!   difficult to do with query params. Think of this library as more RPC, less REST.
+//! Have a look at the examples in the `examples` directory to get a feel for how this library is used, or keep reading!
 //!
 //! # A Basic Example
 //!
@@ -50,27 +32,23 @@
 //! // reflection to allow us to get information about the shape of the type and doc comments
 //! // added to it, as well as ensuring that they can be Serialized/Deserialized.
 //!
-//! /// Provide two numbers to get back the division of them.
 //! #[ApiBody]
 //! struct DivisionInput {
 //!     a: usize,
 //!     b: usize
 //! }
 //!
-//! /// The division of two numbers `a` and `b`.
 //! #[ApiBody]
 //! #[derive(PartialEq)]
 //! struct DivisionOutput {
 //!     a: usize,
 //!     b: usize,
-//!     /// The division of the first and second number
 //!     result: usize
 //! }
 //!
-//! // We can use `seamless::ApiError` to easily allow an existing
-//! // enum or struct to be returnable from the API if things go wrong.
-//! // `ApiError`s must implement `Debug` and `Display`. We use `thiserror`
-//! // here to easily implement Display.
+//! // Any errors that we return must implement `Into<ApiError>`, Display and Debug. We can derive
+//! // `ApiError` to automate  this for us. Here we use `thiserror` to derive the Display impl
+//! // for us. See the documentation on the `ApiError` macro for more info.
 //! #[derive(ApiError, Debug, thiserror::Error, PartialEq)]
 //! enum MathsError {
 //!     #[error("Division by zero")]
@@ -78,12 +56,18 @@
 //!     DivideByZero
 //! }
 //!
-//! // We instantiate an API and add routes to it like so. The handler function would
-//! // often be an external `async fn foo()` defined elsewhere (see the examples), but
-//! // for the sake of this example we define it inline.
 //! let mut api = Api::new();
 //!
-//! api.add("maths.divide")
+//! // We add routes to our new API like so. The handler functions would often be defined separately and
+//! // called from this handler. Handler functions can be async or sync, and can return either a `Result`
+//! // or an `Option` where the success value is an `ApiBody` and the error an `Into<ApiError>`.
+//! api.add("/echo")
+//!     .description("Echoes back a JSON string")
+//!     .handler(|body: Json<String>| Some(body.json));
+//! api.add("/reverse")
+//!     .description("Reverse an array of numbers")
+//!     .handler(|body: Json<Vec<usize>>| Some(body.json.into_iter().rev().collect::<Vec<usize>>()));
+//! api.add("/maths.divide")
 //!    .description("Divide two numbers by each other")
 //!    .handler(|body: Json<DivisionInput>| async move {
 //!        let a = body.json.a;
@@ -95,27 +79,15 @@
 //!
 //! // Once we've added routes to the `api`, we use it by sending `http::Request`s to it.
 //! // Below, we give the API a quick test and assert that we get back what we expect when
-//! // we do this:
+//! // we do this.
 //!
 //! let req = Request::post("/maths.divide")
-//!    .body(serde_json::to_vec(&DivisionInput { a: 20, b: 10 }).unwrap())
-//!    .unwrap();
+//!     .header("content-type", "application/json")
+//!     .body(serde_json::to_vec(&DivisionInput { a: 20, b: 10 }).unwrap())
+//!     .unwrap();
 //! assert_eq!(
 //!     api.handle(req).await.unwrap().into_body(),
 //!     serde_json::to_vec(&DivisionOutput{ a: 20, b: 10, result: 2 }).unwrap()
-//! );
-//!
-//! let req = Request::post("/maths.divide")
-//!    .body(serde_json::to_vec(&DivisionInput { a: 10, b: 0 }).unwrap())
-//!    .unwrap();
-//! assert_eq!(
-//!     api.handle(req).await.unwrap_err().unwrap_err(),
-//!     ApiError {
-//!         code: 400,
-//!         internal_message: "Division by zero".to_owned(),
-//!         external_message: "Division by zero".to_owned(),
-//!         value: None
-//!     }
 //! );
 //! # });
 //! ```
@@ -124,11 +96,10 @@
 //!
 //! Most real life use cases will require some sort of state to be accessible inside a handler.
 //!
-//!
 //! This library follows an approach a little similar to `Rocket`. Any type that implements the
-//! [`handler::HandlerParam`] trait can be passed into handler functions. To pass state in, you can
-//! inject it into the `http::Request` prior to handing it to this library, and then extract it out
-//! of the request again in the [`handler::HandlerParam`] implementation.
+//! [`handler::HandlerParam`] trait can be passed into handler functions. Using this trait, you can
+//! inspect the request to do things like obtain user information from a session ID, or you can pull
+//! state out of the `Request` object that was placed there prior to it being handed to this library.
 //!
 //! **Note**: params implementing the `RequestParam` trait must come before the one that implements
 //! `RequestBody` (if any) in the handler function argument list.
@@ -169,16 +140,17 @@
 //! // Note that we can now ask for `State` as a parameter to the handler. State
 //! // MUST come before our `Json<_>` parameter. `HandlerParam` impls are evaluated
 //! // in the order that arguments appear in the parameter list.
-//! api.add("maths/divide")
-//!     .description("Divide two numbers by each other")
-//!     .handler(|_state: State, body: Json<_>| divide(body.json));
+//! api.add("/echo")
+//!     .description("Echoes back a JSON string")
+//!     .handler(|_state: State, body: Json<String>| Some(body.json));
 //!
-//! // When passing a request into our API, remember to inject `State` so that
-//! // it's available for our `HandlerParam` trait to extract:
-//! let mut req = http::Request::post("/maths/divide")
-//!     .body(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap())
+//! let mut req = http::Request::post("/echo")
+//!     .header("content-type", "application/json")
+//!     .body(serde_json::to_vec("hello").unwrap())
 //!     .unwrap();
 //!
+//! // When passing a request into our API, remember to inject `State` too so that
+//! // it's available for our `HandlerParam` trait to extract:
 //! req.extensions_mut().insert(State);
 //!
 //! // We can now handle the request without issues:
@@ -188,8 +160,9 @@
 //!
 //! # Info
 //!
-//! At some point, you may want to get information about the shape of the API so that you can go
-//! and generate a typed API client. To do this, use the [`Api::info()`] function.
+//! At some point, you'll probably want to get information about the shape of the API so that you can go
+//! and generate a typed API client (this is, after all, the main selling point of this library). To do this,
+//! use the [`Api::info()`] function.
 //!
 //! Probably the best way to see what shapes this info can take is by looking at `api/info.rs`.
 //!
@@ -289,7 +262,31 @@
 //! # assert_eq!(serde_json::to_value(info).unwrap(), info_json);
 //! # })
 //! ```
-
+//!
+//! # Integrating with other libraries
+//!
+//! Instead of passing requests in manually, you'll probably want to attach an API you define here to a library like
+//! `Rocket` or `Warp` (or perhaps just plain old `Hyper`) so that you can benefit from the full power and flexibility
+//! of a well rounded HTTP library alongside your well typed `seamless` API.
+//!
+//! See `examples/warp.rs` and `examples/rocket.rs` for examples of how you might integrate this library with those.
+//! Essentially it boils down to being able to construct an `http::Request` from whatever input the library gives you
+//! access to, and being able to handle the `http::Response` or error that's handed back with your library of choice.
+//!
+//! # Limitations
+//!
+//! Seamless is designed to make it easy to create simple RPC style JSON APIs that can be seamlessly typed from client
+//! to server without using external tools like OpenAPI.
+//!
+//! - Seamless has not been optimised for building RESTful style APIs (notably, the ability to work with query params is
+//! lacking, because they do not play nicely with the type safety that this library tries to provide).
+//! - Some of the flexiblity that `Serde` provides for manipulating how types are serialized and deserialized is not
+//! available. This library takes the approach of 'wrapping' serde using the `ApiBody` macro to ensure that the type
+//! information generated matches the actual JSON you get back.
+//! - Streaming request and response bodies back from seamless is currently not supported. For simplicity, bodies are
+//! expected to be `Vec<u8>`s so that the yare easy to work with. It's expected that JSON will be the main method by
+//! which this library inputs and outputs data, and JSON doesn't stream well naturally, so this does not seem like a big
+//! loss at present.
 
 pub mod handler;
 pub mod api;

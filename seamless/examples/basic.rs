@@ -18,21 +18,30 @@ async fn main() {
 
     // Add some routes:
     //
-    api.add("maths/divide")
-        .description("Divide two numbers by each other")
-        .handler(|body: Json<_>| divide(body.json));
-    api.add("maths/multiply")
-        .description("Multiply two numbers by each other")
-        .handler(|body: Json<_>| multiply(body.json));
+    api.add("basic/echo")
+        .description("Echoes back a JSON string")
+        .handler(|body: Json<String>| Some(body.json));
+    api.add("basic/reverse")
+        .description("Reverse an array of numbers")
+        .handler(|body: Json<Vec<usize>>| Some(body.json.into_iter().rev().collect::<Vec<usize>>()));
+
+    // This route uses custom types (see below):
     api.add("meta/status")
         .description("Get the current API status")
         .handler(status);
+
+    // This route has an `async` handler (see below):
+    api.add("maths/divide")
+        .description("Divide two numbers by each other")
+        .handler(|body: Json<_>| divide(body.json));
+
 
     // Now, we can handle incoming requests. Let's test a couple:
     //
 
     // Division..
     let req = Request::post("/maths/divide")
+        .header("content-type", "application/json")
         .body(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap())
         .unwrap();
     let actual: Value = serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
@@ -41,6 +50,7 @@ async fn main() {
 
     // Division, hitting our error..
     let req = Request::post("/maths/divide")
+        .header("content-type", "application/json")
         .body(serde_json::to_vec(&BinaryInput { a: 10, b: 0 }).unwrap())
         .unwrap();
     assert_eq!(
@@ -53,16 +63,9 @@ async fn main() {
         }
     );
 
-    // Multiplication..
-    let req = Request::post("/maths/multiply")
-        .body(serde_json::to_vec(&BinaryInput { a: 7, b: 4 }).unwrap())
-        .unwrap();
-    let actual: Value =  serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
-    let expected = serde_json::to_value(json!({ "a": 7, "b": 4, "result": 28 })).unwrap();
-    assert_eq!(actual, expected);
-
     // API status:
     let req = Request::get("/meta/status")
+        .header("content-type", "application/json")
         .body(Vec::new())
         .unwrap();
     let actual: Value =  serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
@@ -107,13 +110,6 @@ async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
         .map(|result| BinaryOutput { a, b, result })
 }
 
-// ..or sync handlers that return results..
-fn multiply(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
-    let a = input.a;
-    let b = input.b;
-    Ok(BinaryOutput { a, b, result: a * b })
-}
-
 /// The API status
 #[ApiBody]
 struct Status {
@@ -131,4 +127,10 @@ fn status() -> Option<Status> {
     Some(Status {
         status: StatusValue::Ok
     })
+}
+
+// Make sure the example is valid when runnign cargo test
+#[test]
+fn test_main() {
+    main()
 }
