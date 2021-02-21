@@ -9,14 +9,11 @@ use async_trait::async_trait;
 /// for the sake of generating API information.
 #[async_trait]
 pub trait HandlerBody: Sized {
-    /// An error indicating what went wrong in the event that we fail to extract
-    /// our body from the provided request.
-    type Error: Into<ApiError> + 'static;
     /// Given a request containing arbitrary bytes, this function needs to return an
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
-    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,Self::Error>;
+    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError>;
     /// Which HTTP method is required for this Body to be valid. By default, if a body
     /// is present in the handler we'll expect the method to be POST. Implement this function
     /// to override that.
@@ -27,13 +24,9 @@ pub trait HandlerBody: Sized {
 /// that the user needs to provide JSON that decodes to `T`.
 /// Notably, `T` needs to implement `ApiBody` with the
 /// Deserialize option.
-pub struct Json<T> {
-    /// the type that has been deserialized from JSON.
-    pub json: T
-}
+pub struct FromJson<T: ApiBody>(pub T);
 #[async_trait]
-impl <T> HandlerBody for Json<T> where T: DeserializeOwned {
-    type Error = ApiError;
+impl <T> HandlerBody for FromJson<T> where T: DeserializeOwned + ApiBody {
     async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
         let content_type = req.headers()
             .get(http::header::CONTENT_TYPE)
@@ -54,10 +47,10 @@ impl <T> HandlerBody for Json<T> where T: DeserializeOwned {
                 external_message: e.to_string(),
                 value: None
             })?;
-        Ok(Json { json })
+        Ok(FromJson(json))
     }
 }
-impl <T> ApiBody for Json<T> where T: ApiBody {
+impl <T> ApiBody for FromJson<T> where T: ApiBody {
     fn api_body_info() -> ApiBodyInfo {
         T::api_body_info()
     }
@@ -75,19 +68,15 @@ fn content_type_not_json_err() -> ApiError {
 /// If the last argument to a handler is this, we'll assume
 /// that the user can provide arbitrary binary data, and
 /// we'll make that data available within the handler as bytes.
-pub struct Binary {
-    /// The bytes that were provided in the incoming [`http::Request`]
-    pub bytes: Vec<u8>
-}
+pub struct FromBinary(pub Vec<u8>);
 #[async_trait]
-impl HandlerBody for Binary {
-    type Error = ApiError;
+impl HandlerBody for FromBinary {
     async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
         let bytes = req.into_body();
-        Ok(Binary { bytes })
+        Ok(FromBinary(bytes))
     }
 }
-impl ApiBody for Binary {
+impl ApiBody for FromBinary {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: "Binary data".to_owned(),

@@ -63,15 +63,15 @@ let mut api = Api::new();
 // you'll find that types can be inferred, and so you can use `Json<_>` if you prefer in those cases.
 api.add("/echo")
     .description("Echoes back a JSON string")
-    .handler(|body: Json<String>| Some(body.json));
+    .handler(|body: Json<String>| Some(body.0));
 api.add("/reverse")
     .description("Reverse an array of numbers")
-    .handler(|body: Json<Vec<usize>>| Some(body.json.into_iter().rev().collect::<Vec<usize>>()));
+    .handler(|body: Json<Vec<usize>>| Some(body.0.into_iter().rev().collect::<Vec<usize>>()));
 api.add("/maths.divide")
    .description("Divide two numbers by each other")
    .handler(|body: Json<DivisionInput>| async move {
-       let a = body.json.a;
-       let b = body.json.b;
+       let a = body.0.a;
+       let b = body.0.b;
        a.checked_div(b)
            .ok_or(MathsError::DivideByZero)
            .map(|result| DivisionOutput { a, b, result })
@@ -139,7 +139,7 @@ let mut api = Api::new();
 // in the order that arguments appear in the parameter list.
 api.add("/echo")
     .description("Echoes back a JSON string")
-    .handler(|_state: State, body: Json<String>| Some(body.json));
+    .handler(|_state: State, body: Json<String>| Some(body.0));
 
 let mut req = http::Request::post("/echo")
     .header("content-type", "application/json")
@@ -211,7 +211,7 @@ async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
 let mut api = Api::new();
 api.add("maths/divide")
     .description("Divide two numbers by each other")
-    .handler(|body: Json<_>| divide(body.json));
+    .handler(|body: Json<_>| divide(body.0));
 
 // Get info about this API:
 let info = api.info();

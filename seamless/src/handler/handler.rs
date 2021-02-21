@@ -1,10 +1,11 @@
+#![doc(hidden)]
 use http::{ Request, Response, method::Method };
-use serde::{ Serialize };
 use std::future::Future;
 use std::pin::Pin;
 use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
 use crate::handler::{ HandlerParam, HandlerBody };
 use super::response::HandlerResponse;
+use super::to_async::ToAsync;
 
 // Internally we resolve the provided handler functions into this:
 #[doc(hidden)]
@@ -23,8 +24,8 @@ type Fut<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 /// then optionally an argument that implements `Body` (eg `Json` or
 /// `Binary`) if the handler requires a body to be provided. Arguments
 /// are resolved in the order that they are provided.
+#[doc(hidden)]
 pub trait IntoHandler<A> {
-    #[doc(hidden)]
     fn into_handler(self) -> Handler;
 }
 
@@ -44,28 +45,26 @@ macro_rules! resolve_for_contexts {
         // usage will not overlap, and so the correct impl can be chosen.
         $(
 
-        impl <HandlerFn, Body, BodyErr, Res, Output, HandlerErr, $($ctx,)* $($err,)* A>
-            IntoHandler<(WithBody, HandlerFn, Body, BodyErr, Res, Output, HandlerErr, $($ctx,)* $($err,)* A)> for HandlerFn
+        impl <HandlerFn, Body, Res, Output, $($ctx,)* $($err,)* A>
+            IntoHandler<(WithBody, HandlerFn, Body, Res, Output, $($ctx,)* $($err,)* A)> for HandlerFn
         where
             // This is the rough shape we want a handler function to have:
             HandlerFn: Fn($($ctx,)* Body) -> Res + Clone + Sync + Send + 'static,
 
             // The last argument to handler functions should be a HandlerBody:
-            Body: HandlerBody<Error=BodyErr> + ApiBody + Send,
-            // Any error from this must convert to an ApiError:
-            BodyErr: Into<ApiError> + 'static,
+            Body: HandlerBody + ApiBody + Send,
 
             // Any other argument given must be a HandlerParam:
             $( $ctx: HandlerParam<Error=$err> + Send, )*
-            // Each of these params can return a unique error, but it needs to covnert into ApiError:
+            // Each of these params can return a unique error, but it needs to convert into ApiError:
             $( $err: Into<ApiError> + Send + 'static, )*
 
-            // The thing returned from the handler must be a valid HandlerResponse:
-            Res: HandlerResponse<Output,HandlerErr,A> + Send,
-            // The _Output_ from the HandlerResponse needs to implement ApiBody:
-            Output: ApiBody + Serialize + 'static,
-            // The _Error_ from the HandlerResponse needs to convert to a valid ApiError:
-            HandlerErr: Into<ApiError> + 'static,
+            // The thing returned from the handler can be sync or async:
+            Res: ToAsync<Output, A> + Send,
+            // The _Output_ from the Res needs to convert into an http::Response or ApiError:
+            Output: HandlerResponse + Send + 'static,
+            // What will the response eventually look like?
+            <Output as HandlerResponse>::ResponseBody: ApiBody
         {
             fn into_handler(self) -> Handler {
                 #[allow(unused_variables)]
@@ -86,15 +85,12 @@ macro_rules! resolve_for_contexts {
                         let (parts, _) = bodyless_req.into_parts();
                         let req = Request::from_parts(parts, body);
                         let body = Body::handler_body(req).await.map_err(|e| { let e: ApiError = e.into(); e })?;
-                        let handler_res = inner_handler($($ctx,)* body)
+                        let response = inner_handler($($ctx,)* body)
+                            .to_async()
+                            .await
                             .handler_response()
                             .await
                             .map_err(|e| { let e: ApiError = e.into(); e })?;
-
-                        let response = Response::builder()
-                            .header("Content-Type", "application/json")
-                            .body(handler_res.to_json_vec())
-                            .unwrap();
 
                         Ok(response)
                     }
@@ -104,28 +100,26 @@ macro_rules! resolve_for_contexts {
                     method: Body::handler_method(),
                     handler: Box::new(move |req| Box::pin(handler(req))),
                     request_type: Body::api_body_info(),
-                    response_type: Output::api_body_info()
+                    response_type: <Output as HandlerResponse>::ResponseBody::api_body_info()
                 }
             }
         }
 
-        impl <HandlerFn, Res, Output, HandlerErr, $($ctx,)* $($err,)* A>
-            IntoHandler<(WithoutBody, HandlerFn, Res, Output, HandlerErr, $($ctx,)* $($err,)* A)> for HandlerFn
+        impl <HandlerFn, Res, Output, $($ctx,)* $($err,)* A>
+            IntoHandler<(WithoutBody, HandlerFn, Res, Output, $($ctx,)* $($err,)* A)> for HandlerFn
         where
             // This is the rough shape we want a handler function to have (this time, no "body" at the end):
             HandlerFn: Fn($($ctx,)*) -> Res + Clone + Sync + Send + 'static,
 
             // Any argument given must be a HandlerParam:
             $( $ctx: HandlerParam<Error=$err> + Send, )*
-            // Each of these params can return a unique error, but it needs to covnert into ApiError:
+            // Each of these params can return a unique error, but it needs to convert into ApiError:
             $( $err: Into<ApiError> + Send + 'static, )*
 
-            // The thing returned from the handler must be a valid HandlerResponse:
-            Res: HandlerResponse<Output,HandlerErr,A> + Send,
-            // The _Output_ from the HandlerResponse needs to implement ApiBody:
-            Output: ApiBody + Serialize + 'static,
-            // The _Error_ from the HandlerResponse needs to convert to a valid ApiError:
-            HandlerErr: Into<ApiError> + 'static,
+            // The thing returned from the handler can be sync or async:
+            Res: ToAsync<Output, A> + Send,
+            // The _Output_ from the Res needs to convert into an http::Response or ApiError:
+            Output: HandlerResponse + ApiBody + Send + 'static
         {
             fn into_handler(self) -> Handler {
                 #[allow(unused_variables)]
@@ -143,15 +137,12 @@ macro_rules! resolve_for_contexts {
                             .map_err(|e| { let e: ApiError = e.into(); e })?;
                         )*
 
-                        let handler_res = inner_handler($($ctx),*)
+                        let response = inner_handler($($ctx),*)
+                            .to_async()
+                            .await
                             .handler_response()
                             .await
                             .map_err(|e| { let e: ApiError = e.into(); e })?;
-
-                        let response = Response::builder()
-                            .header("Content-Type", "application/json")
-                            .body(handler_res.to_json_vec())
-                            .unwrap();
 
                         Ok(response)
                     }

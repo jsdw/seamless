@@ -46,22 +46,22 @@ impl Api {
     /// # Examples
     ///
     /// ```
-    /// # use seamless::{ Api, handler::body::Json };
+    /// # use seamless::{ Api, handler::{ body::FromJson, response::ToJson } };
     /// # use std::convert::Infallible;
     /// # let mut api = Api::new();
     /// // This route expects a JSON formatted string to be provided, and echoes it straight back.
     /// api.add("some/route/name")
     ///    .description("This route takes some Foo's in and returns some Bar's")
-    ///    .handler(|body: Json<String>| async move { Ok::<_,std::convert::Infallible>(body.json) });
+    ///    .handler(|body: FromJson<String>| ToJson(body.0));
     ///
     /// // This route delegates to an async fn to sum some values, so we can infer more types in the
     /// // handler.
     /// api.add("another.route")
     ///    .description("This route takes an array of values and sums them")
-    ///    .handler(|body: Json<_>| sum(body.json));
+    ///    .handler(|body: FromJson<_>| sum(body.0));
     ///
-    /// async fn sum(ns: Vec<u64>) -> Result<u64, Infallible> {
-    ///     Ok(ns.into_iter().sum())
+    /// async fn sum(ns: Vec<u64>) -> ToJson<u64> {
+    ///     ToJson(ns.into_iter().sum())
     /// }
     /// ```
     pub fn add<P: Into<String>>(&mut self, path: P) -> RouteBuilder {
@@ -126,21 +126,21 @@ impl Api {
 /// # Examples
 ///
 /// ```
-/// # use seamless::{ Api, handler::body::Json };
+/// # use seamless::{ Api, handler::{ body::FromJson, response::ToJson } };
 /// # use std::convert::Infallible;
 /// # let mut api = Api::new();
 /// // This route expects a JSON formatted string to be provided, and echoes it straight back.
-/// api.add("some/route/name")
-///    .description("This route takes some Foo's in and returns some Bar's")
-///    .handler(|body: Json<String>| async move { Ok::<_,std::convert::Infallible>(body.json) });
+/// api.add("echo")
+///    .description("Echo back the JSON encoded string provided")
+///    .handler(|body: FromJson<String>| ToJson(body.0));
 ///
 /// // This route delegates to an async fn to sum some values, so we can infer more types in the handler.
 /// api.add("another.route")
 ///    .description("This route takes an array of values and sums them")
-///    .handler(|body: Json<_>| sum(body.json));
+///    .handler(|FromJson(body)| sum(body));
 ///
-/// async fn sum(ns: Vec<u64>) -> Result<u64, Infallible> {
-///     Ok(ns.into_iter().sum())
+/// async fn sum(ns: Vec<u64>) -> Result<ToJson<u64>, Infallible> {
+///     Ok(ToJson(ns.into_iter().sum()))
 /// }
 /// ```
 pub struct RouteBuilder<'a> {

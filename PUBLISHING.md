@@ -7,7 +7,8 @@ Follow these steps to publish a new version
 Make sure tests pass and examples happily run:
 
 ```
-cargo test --all-targets
+cargo test
+cargo test --examples
 ```
 
 ## Check the docs

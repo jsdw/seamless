@@ -2,8 +2,8 @@
 //! inject state into handlers.
 
 use seamless::{
-    api::{ Api, ApiBody, ApiError },
-    handler::{ HandlerParam, body::{ Json } },
+    api::{ Api, ApiError },
+    handler::{ HandlerParam, body::FromJson, response::ToJson },
 };
 
 // Something we want to inject into our handler.
@@ -36,16 +36,16 @@ async fn main() {
 
     // Add some routes. Note that we can now ask for `State` as a parameter
     // to the handler.
-    api.add("maths/divide")
-        .description("Divide two numbers by each other")
-        .handler(|_state: State, body: Json<_>| divide(body.json));
+    api.add("echo")
+        .description("Echo back the string provided")
+        .handler(|_state: State, body: FromJson<String>| ToJson(body.0));
 
 
     // When passing a request into our API, remember to inject `State` so that
     // it's available for our `HandlerParam` trait to extract:
-    let mut req = http::Request::post("/maths/divide")
+    let mut req = http::Request::post("/echo")
         .header("content-type", "application/json")
-        .body(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap())
+        .body(serde_json::to_vec("hello").unwrap())
         .unwrap();
 
     req.extensions_mut().insert(State);
@@ -53,44 +53,6 @@ async fn main() {
     // We can now handle the request without issues:
     assert!(api.handle(req).await.is_ok());
 
-}
-
-/// We can use `seamless::ApiError` to easily allow an existing
-/// enum or struct to be converted into an `ApiError`. Errors need to
-/// implement the `Display` trait; we use `thiserror` to help with that
-/// in this example.
-#[derive(ApiError, Debug, thiserror::Error)]
-enum MathsError {
-    #[error("Division by zero")]
-    #[api_error(external, code=400)]
-    DivideByZero
-}
-
-/// Input consisting of two numbers
-#[ApiBody]
-struct BinaryInput {
-    /// Input 'a'
-    a: usize,
-    /// Input 'b'
-    b: usize
-}
-
-/// Output containing the original input and result
-#[ApiBody]
-#[derive(PartialEq)]
-struct BinaryOutput {
-    a: usize,
-    b: usize,
-    /// The result
-    result: usize
-}
-
-async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
-    let a = input.a;
-    let b = input.b;
-    a.checked_div(b)
-        .ok_or(MathsError::DivideByZero)
-        .map(|result| BinaryOutput { a, b, result })
 }
 
 // Make sure the example is valid when runnign cargo test

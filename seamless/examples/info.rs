@@ -6,7 +6,7 @@
 
 use seamless::{
     api::{ Api, ApiBody, ApiError },
-    handler::body::{ Json },
+    handler::{ body::FromJson, response::ToJson },
 };
 use serde_json::json;
 
@@ -21,7 +21,7 @@ async fn main() {
     //
     api.add("maths/divide")
         .description("Divide two numbers by each other")
-        .handler(|body: Json<_>| divide(body.json));
+        .handler(|body: FromJson<_>| divide(body.0));
 
     // We can get hold of information about the routes we've added:
     //
@@ -106,12 +106,12 @@ struct BinaryOutput {
     result: usize
 }
 
-async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
+async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>,MathsError> {
     let a = input.a;
     let b = input.b;
     a.checked_div(b)
         .ok_or(MathsError::DivideByZero)
-        .map(|result| BinaryOutput { a, b, result })
+        .map(|result| ToJson(BinaryOutput { a, b, result }))
 }
 
 // Make sure the example is valid when runnign cargo test

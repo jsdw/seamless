@@ -4,7 +4,7 @@
 
 use seamless::{
     api::{ Api, ApiBody, ApiError },
-    handler::body::{ Json },
+    handler::{ body::{ FromJson }, response::ToJson },
     http::{ Request }
 };
 use serde_json::{ Value, json };
@@ -20,20 +20,20 @@ async fn main() {
     //
     api.add("basic/echo")
         .description("Echoes back a JSON string")
-        .handler(|body: Json<String>| Some(body.json));
+        .handler(|FromJson(body)| ToJson::<String>(body));
     api.add("basic/reverse")
         .description("Reverse an array of numbers")
-        .handler(|body: Json<Vec<usize>>| Some(body.json.into_iter().rev().collect::<Vec<usize>>()));
+        .handler(|body: FromJson<Vec<usize>>| ToJson(body.0.into_iter().rev().collect::<Vec<usize>>()));
 
     // This route uses custom types (see below):
     api.add("meta/status")
         .description("Get the current API status")
-        .handler(status);
+        .handler(|| status().map(ToJson));
 
     // This route has an `async` handler (see below):
     api.add("maths/divide")
         .description("Divide two numbers by each other")
-        .handler(|body: Json<_>| divide(body.json));
+        .handler(|FromJson(body)| divide(body));
 
 
     // Now, we can handle incoming requests. Let's test a couple:
@@ -102,12 +102,12 @@ struct BinaryOutput {
 }
 
 // We can have async handlers that return Results..
-async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
+async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>,MathsError> {
     let a = input.a;
     let b = input.b;
     a.checked_div(b)
         .ok_or(MathsError::DivideByZero)
-        .map(|result| BinaryOutput { a, b, result })
+        .map(|result| ToJson(BinaryOutput { a, b, result }))
 }
 
 /// The API status

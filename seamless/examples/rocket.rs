@@ -14,7 +14,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use seamless::{
     api::{ Api, RouteError },
-    handler::body::Json
+    handler::{ body::FromJson, response::ToJson }
 };
 
 #[rocket::launch]
@@ -24,10 +24,10 @@ fn rocket() -> rocket::Rocket {
 
     api.add("/api/echo")
         .description("Echoes back a JSON string")
-        .handler(|body: Json<String>| Some(body.json));
+        .handler(|body: FromJson<String>| ToJson(body.0));
     api.add("/api/reverse")
         .description("Reverse an array of numbers")
-        .handler(|body: Json<Vec<usize>>| Some(body.json.into_iter().rev().collect::<Vec<usize>>()));
+        .handler(|body: FromJson<Vec<usize>>| ToJson(body.0.into_iter().rev().collect::<Vec<usize>>()));
 
     rocket::ignite().mount("/", SeamlessApi(Arc::new(api)))
 }

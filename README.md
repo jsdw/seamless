@@ -27,7 +27,7 @@ Below is a basic self contained example of using this library.
 use seamless::{
     http::{ Request },
     api::{ Api, ApiBody, ApiError },
-    handler::body::{ Json }
+    handler::{ body::FromJson, response::ToJson }
 };
 
 // The API relies on types that have been annotated with `ApiBody` (request and response
@@ -67,18 +67,18 @@ let mut api = Api::new();
 // you'll find that types can be inferred, and so you can use `Json<_>` if you prefer in those cases.
 api.add("/echo")
     .description("Echoes back a JSON string")
-    .handler(|body: Json<String>| Some(body.json));
+    .handler(|body: FromJson<String>| ToJson(body.0));
 api.add("/reverse")
     .description("Reverse an array of numbers")
-    .handler(|body: Json<Vec<usize>>| Some(body.json.into_iter().rev().collect::<Vec<usize>>()));
+    .handler(|body: FromJson<Vec<usize>>| ToJson(body.0.into_iter().rev().collect::<Vec<usize>>()));
 api.add("/maths.divide")
    .description("Divide two numbers by each other")
-   .handler(|body: Json<DivisionInput>| async move {
-       let a = body.json.a;
-       let b = body.json.b;
+   .handler(|body: FromJson<DivisionInput>| async move {
+       let a = body.0.a;
+       let b = body.0.b;
        a.checked_div(b)
            .ok_or(MathsError::DivideByZero)
-           .map(|result| DivisionOutput { a, b, result })
+           .map(|result| ToJson(DivisionOutput { a, b, result }))
    });
 
 // Once we've added routes to the `api`, we use it by sending `http::Request`s to it.
@@ -110,7 +110,7 @@ Here's an example:
 ```rust
 use seamless::{
     api::{ Api, ApiBody, ApiError },
-    handler::{ HandlerParam, body::{ Json } },
+    handler::{ HandlerParam, body::FromJson, response::ToJson },
 };
 # #[ApiBody]
 # struct BinaryInput { a: usize, b: usize }
@@ -143,7 +143,7 @@ let mut api = Api::new();
 // in the order that arguments appear in the parameter list.
 api.add("/echo")
     .description("Echoes back a JSON string")
-    .handler(|_state: State, body: Json<String>| Some(body.json));
+    .handler(|_state: State, body: FromJson<String>| ToJson(body.0));
 
 let mut req = http::Request::post("/echo")
     .header("content-type", "application/json")
@@ -163,6 +163,31 @@ assert!(api.handle(req).await.is_ok());
 that implements [`handler::HandlerBody`]. Params are resolved in order, with the first failure short circuiting
 the rest.
 
+# Extracting the request body
+
+To extract the body from a request, the last parameter passed to a handler must implement [`handler::HandlerBody`].
+At most one such parameter can be provided to a handler (providing more than 1 will lead to a compile error). If no
+parameter implementing [`handler::HandlerBody`] is provided to a handler, it's assumed that the request method will
+be GET, and any body will be ignored.
+
+Two built-in types that implement [`handler::HandlerBody`] exist for convenience:
+
+- [`handler::body::FromJson<T>`] will assume that the request body is valid JSON that decodes to the type `T`
+  (or fail with a 400 if not).
+- [`handler::body::FromBinary`] will give you back the request body exactly as it was provided.
+
+# Responding
+
+Responses from handlers can be plain old synchronous objects or [`std::future::Future`]s. The value returned
+in either case must implement [`handler::HandlerResponse`]. This trait determines how to create the response to
+hand back to the user.
+
+For convenience, a [`handler::response::ToJson<T>`] type is provided that will encode the response as JSON.
+
+[`handler::HandlerResponse`] is also implemented for `Option`s and `Result`s, returning a 404 in the event that the
+`Option` is `None`, and returning the error from the `Result` (this must itself implement `Into<ApiError>`) in the
+event that the `Result` is `Err`.
+
 # Info
 
 At some point, you'll probably want to get information about the shape of the API so that you can go
@@ -177,7 +202,7 @@ Here's an example:
 # tokio::runtime::Runtime::new().unwrap().block_on(async {
 use seamless::{
     api::{ Api, ApiBody, ApiError },
-    handler::body::{ Json },
+    handler::{ body::FromJson, response::ToJson },
 };
 use serde_json::json;
 
@@ -207,7 +232,7 @@ struct BinaryOutput {
     result: usize
 }
 
-async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
+async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>,MathsError> {
     todo!()
 }
 
@@ -215,7 +240,7 @@ async fn divide(input: BinaryInput) -> Result<BinaryOutput,MathsError> {
 let mut api = Api::new();
 api.add("maths/divide")
     .description("Divide two numbers by each other")
-    .handler(|body: Json<_>| divide(body.json));
+    .handler(|FromJson(body)| divide(body));
 
 // Get info about this API:
 let info = api.info();
@@ -268,7 +293,7 @@ let info_json = json!([
 # })
 ```
 
-The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`, `Any`, `ArrayOf`, `TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come with an additional property.
+The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`, `Any`, rayOf`,`TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come with an additional perty.
 See `seamless/src/api/info.rs` to get a better feel for exactly what the possible responses can be.
 
 # Integrating with other libraries
