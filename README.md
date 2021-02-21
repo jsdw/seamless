@@ -61,16 +61,17 @@ enum MathsError {
 
 let mut api = Api::new();
 
-// We add routes to our new API like so. The handler functions would often be defined separately and
-// called from this handler. Handler functions can be async or sync, and can return either a `Result`
-// or an `Option` where the success value is an `ApiBody` and the error an `Into<ApiError>`. Often,
-// you'll find that types can be inferred, and so you can use `Json<_>` if you prefer in those cases.
+// We add routes to our new API like so. The handler functions would often be defined
+// separately and called from this handler. Handler functions can be async or sync, and can
+// return any valid handler::HandlerResponse.
 api.add("/echo")
     .description("Echoes back a JSON string")
     .handler(|body: FromJson<String>| ToJson(body.0));
 api.add("/reverse")
     .description("Reverse an array of numbers")
-    .handler(|body: FromJson<Vec<usize>>| ToJson(body.0.into_iter().rev().collect::<Vec<usize>>()));
+    .handler(|body: FromJson<Vec<usize>>|
+        ToJson(body.0.into_iter().rev().collect::<Vec<usize>>())
+    );
 api.add("/maths.divide")
    .description("Divide two numbers by each other")
    .handler(|body: FromJson<DivisionInput>| async move {
@@ -159,7 +160,7 @@ assert!(api.handle(req).await.is_ok());
 # })
 ```
 
-**Note**: params implementing the [`handler::HandleParam`] trait must come before the optional final param
+**Note**: params implementing the [`handler::HandlerParam`] trait must come before the optional final param
 that implements [`handler::HandlerBody`]. Params are resolved in order, with the first failure short circuiting
 the rest.
 
@@ -293,8 +294,10 @@ let info_json = json!([
 # })
 ```
 
-The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`, `Any`, rayOf`,`TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come with an additional perty.
-See `seamless/src/api/info.rs` to get a better feel for exactly what the possible responses can be.
+The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`,
+`Any`, `ArrayOf`, `TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come
+with an additional perty. See `seamless/src/api/info.rs` to get a better feel for exactly what the possible responses
+can be.
 
 # Integrating with other libraries
 

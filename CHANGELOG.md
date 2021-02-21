@@ -1,3 +1,13 @@
+# v0.7.1
+
+- Minor doc fix.
+
+# v0.7.0
+
+- `handler::body::Json` and `handler::body::Binary` renamed to `handler::body::FromJson` and `handler::body::FromBinary`.
+- `handler::response::HandlerResponse` altered so that it is in a better state to be implemented by others, and takes on more of the responsibility of deciding what the response should look like (no hardcoded JSON assumption any more).
+- Handlers can now return anything implementing `handler::response::HandlerResponse` (sync or async).
+
 # v0.6.0
 
 - Require 'content-type: application/json' when requestion a `Json<_>` body in a handler.

@@ -291,8 +291,10 @@
 //! # })
 //! ```
 //!
-//! The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`, `Any`, rayOf`,`TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come with an additional perty.
-//! See `seamless/src/api/info.rs` to get a better feel for exactly what the possible responses can be.
+//! The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`,
+//! `Any`, `ArrayOf`, `TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come
+//! with an additional perty. See `seamless/src/api/info.rs` to get a better feel for exactly what the possible responses
+//! can be.
 //!
 //! # Integrating with other libraries
 //!
