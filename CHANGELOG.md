@@ -1,3 +1,7 @@
+# v0.7.2
+
+- Fix bug which made it hard to return a valid value from a handler function that didn't accept a body.
+
 # v0.7.1
 
 - Minor doc fix.

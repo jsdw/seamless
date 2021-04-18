@@ -1,6 +1,6 @@
 [package]
 name = "seamless_macros"
-version = "0.7.1"
+version = "0.7.2"
 authors = ["James Wilson <james@jsdw.me>"]
 edition = "2018"
 license = "MIT"

@@ -119,7 +119,9 @@ macro_rules! resolve_for_contexts {
             // The thing returned from the handler can be sync or async:
             Res: ToAsync<Output, A> + Send,
             // The _Output_ from the Res needs to convert into an http::Response or ApiError:
-            Output: HandlerResponse + ApiBody + Send + 'static
+            Output: HandlerResponse + Send + 'static,
+            // What will the response eventually look like?
+            <Output as HandlerResponse>::ResponseBody: ApiBody
         {
             fn into_handler(self) -> Handler {
                 #[allow(unused_variables)]
@@ -155,7 +157,7 @@ macro_rules! resolve_for_contexts {
                         description: "No request body is expected".to_owned(),
                         ty: crate::api::ApiBodyType::Null
                     },
-                    response_type: Output::api_body_info()
+                    response_type: <Output as HandlerResponse>::ResponseBody::api_body_info()
                 }
             }
         }
