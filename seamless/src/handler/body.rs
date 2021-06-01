@@ -1,7 +1,9 @@
 use http::{ Request, method::Method };
 use serde::{ de::DeserializeOwned };
 use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
+use crate::stream::{ AsyncReadBody };
 use async_trait::async_trait;
+use futures::{ AsyncReadExt };
 
 /// This trait is implemented by anything that represents the incoming request type.
 /// Only one argument implementing this can be asked for in a given handler. The type
@@ -13,7 +15,7 @@ pub trait HandlerBody: Sized {
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
-    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError>;
+    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self,ApiError>;
     /// Which HTTP method is required for this Body to be valid. By default, if a body
     /// is present in the handler we'll expect the method to be POST. Implement this function
     /// to override that.
@@ -22,12 +24,12 @@ pub trait HandlerBody: Sized {
 
 /// If the last argument to a handler is this, we'll assume
 /// that the user needs to provide JSON that decodes to `T`.
-/// Notably, `T` needs to implement `ApiBody` with the
+/// Notably, `T` needs to implement `ApiBody` with the 
 /// Deserialize option.
 pub struct FromJson<T: ApiBody>(pub T);
 #[async_trait]
-impl <T> HandlerBody for FromJson<T> where T: DeserializeOwned + ApiBody {
-    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
+impl <T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
+    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self,ApiError> {
         let content_type = req.headers()
             .get(http::header::CONTENT_TYPE)
             .ok_or_else(content_type_not_json_err)?;
@@ -39,7 +41,17 @@ impl <T> HandlerBody for FromJson<T> where T: DeserializeOwned + ApiBody {
             return Err(content_type_not_json_err())
         }
 
-        let body = req.into_body();
+        // Stream our body into a vector of bytes:
+        let mut body = vec![];
+        req.into_body().read_to_end(&mut body).await
+            .map_err(|e| ApiError {
+                code: 400,
+                internal_message: e.to_string(),
+                external_message: e.to_string(),
+                value: None
+            })?;
+
+        // Assume JSON and parse:
         let json = serde_json::from_slice(&body)
             .map_err(|e| ApiError {
                 code: 400,
@@ -71,9 +83,16 @@ fn content_type_not_json_err() -> ApiError {
 pub struct FromBinary(pub Vec<u8>);
 #[async_trait]
 impl HandlerBody for FromBinary {
-    async fn handler_body(req: Request<Vec<u8>>) -> Result<Self,ApiError> {
-        let bytes = req.into_body();
-        Ok(FromBinary(bytes))
+    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self,ApiError> {
+        let mut body = vec![];
+        req.into_body().read_to_end(&mut body).await
+            .map_err(|e| ApiError {
+                code: 400,
+                internal_message: e.to_string(),
+                external_message: e.to_string(),
+                value: None
+            })?;
+        Ok(FromBinary(body))
     }
 }
 impl ApiBody for FromBinary {

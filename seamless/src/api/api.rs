@@ -3,6 +3,7 @@ use http::{ Request, Response, method::Method };
 use serde::{ Serialize };
 use super::info::{ ApiBodyInfo };
 use super::error::ApiError;
+use crate::stream::AsyncReadBody;
 use crate::handler::{ Handler, IntoHandler };
 
 /// The entry point; you can create an instance of this and then add API routes to it
@@ -84,7 +85,7 @@ impl Api {
     /// else we'll get back a [`RouteError`], which will either be [`RouteError::NotFound`] if no matching
     /// route was found, or a [`RouteError::Err`] if a matching route was found, but that handler emitted
     /// an error.
-    pub async fn handle(&self, req: Request<Vec<u8>>) -> Result<Response<Vec<u8>>,RouteError<ApiError>> {
+    pub async fn handle<'a, Body: AsyncReadBody>(&self, req: Request<Body>) -> Result<Response<Vec<u8>>, RouteError<Body, ApiError>> {
         let base_path = &self.base_path.trim_start_matches('/');
         let req_path = req.uri().path().trim_start_matches('/');
 
@@ -92,10 +93,16 @@ impl Api {
             // Ensure that the method and path suffix lines up as expected:
             let req_method = req.method().into();
             let req_path_tail = req_path[base_path.len()..].trim_start_matches('/').to_owned();
+
+            // Turn req body into &mut dyn AsyncReadBody:
+            let (req_parts, mut req_body) = req.into_parts();
+            let dyn_req = Request::from_parts(req_parts, &mut req_body as &mut dyn AsyncReadBody);
+
             if let Some(route) = self.routes.get(&(req_method,req_path_tail)) {
-                (route.resolved_handler.handler)(req).await.map_err(RouteError::Err)
+                (route.resolved_handler.handler)(dyn_req).await.map_err(RouteError::Err)
             } else {
-                Err(RouteError::NotFound(req))
+                let (req_parts, _) = dyn_req.into_parts();
+                Err(RouteError::NotFound(Request::from_parts(req_parts, req_body)))
             }
         } else {
             Err(RouteError::NotFound(req))
@@ -166,16 +173,24 @@ impl <'a> RouteBuilder<'a> {
 
 /// A route is either not found, or we attempted to run it and ran into
 /// an issue.
-#[derive(Debug)]
-pub enum RouteError<E> {
+pub enum RouteError<B, E> {
     /// No route matched the provided request,
     /// so we hand it back.
-    NotFound(Request<Vec<u8>>),
+    NotFound(Request<B>),
     /// The matching route failed; this is the error.
     Err(E)
 }
 
-impl <E> RouteError<E> {
+impl <B, E: std::fmt::Debug> std::fmt::Debug for RouteError<B, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RouteError::NotFound(..) => f.debug_tuple("RouteError::NotFound").finish(),
+            RouteError::Err(e) => f.debug_tuple("RouteError::Err").field(e).finish()
+        }
+    }
+}
+
+impl <B, E> RouteError<B, E> {
     /// Assume that the `RouteError` contains an error and attempt to
     /// unwrap this
     ///

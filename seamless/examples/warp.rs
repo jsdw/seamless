@@ -8,12 +8,13 @@
 //! To see the API in action.
 use warp::Filter;
 use warp::filters::BoxedFilter;
-use bytes::{ Buf, Bytes };
+use bytes::{ Buf, Bytes }; 
 use std::io::Read;
 use std::sync::Arc;
 use seamless::{
     api::{ Api, RouteError},
-    handler::{ body::FromJson, response::ToJson }
+    handler::{ body::FromJson, response::ToJson },
+    stream
 };
 
 #[tokio::main]
@@ -39,13 +40,16 @@ async fn main() {
 }
 
 // We can write a wap filter that returns an `http::Request` given an incoming request:
-pub fn extract_request() -> impl Filter<Extract=(http::Request<Vec<u8>>,), Error=warp::Rejection> + Copy {
+pub fn extract_request() -> impl Filter<Extract=(http::Request<stream::Bytes>,), Error=warp::Rejection> + Copy {
     warp::method()
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
         .and(warp::body::bytes())
         .map(|method: http::Method, path: warp::path::FullPath, headers: http::HeaderMap, body: Bytes| {
-            // Get our bytes into a vector:
+            // Get our bytes into a vector. Unfortunately this isn't streaming,
+            // because `warp::body::stream()` returns a non-Sendable unnamed impl
+            // at the moment which is somewhat unergonomic to convert into a Sendable
+            // Stream of bytes.
             let mut bytes: Vec<u8> = vec![];
             body.reader().read_to_end(&mut bytes).unwrap();
 
@@ -53,7 +57,7 @@ pub fn extract_request() -> impl Filter<Extract=(http::Request<Vec<u8>>,), Error
             let mut req = http::Request::builder()
                 .method(method)
                 .uri(path.as_str())
-                .body(bytes)
+                .body(stream::Bytes::from_vec(bytes))
                 .expect("request builder");
             { *req.headers_mut() = headers; }
             req
@@ -72,7 +76,7 @@ impl warp::reject::Reject for SeamlessApiError {}
 pub fn to_warp_filter(api: seamless::Api) -> BoxedFilter<(impl warp::Reply,)> {
     let api = Arc::new(api);
     extract_request()
-        .and_then(move |req: http::Request<Vec<u8>>| {
+        .and_then(move |req: http::Request<stream::Bytes>| {
             let api = api.clone();
             async move {
                 // In reality we should also check for the correct Content-Type and

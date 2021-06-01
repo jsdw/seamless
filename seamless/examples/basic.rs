@@ -5,7 +5,8 @@
 use seamless::{
     api::{ Api, ApiBody, ApiError },
     handler::{ body::{ FromJson }, response::ToJson },
-    http::{ Request }
+    http::{ Request },
+    stream::Bytes
 };
 use serde_json::{ Value, json };
 
@@ -42,7 +43,7 @@ async fn main() {
     // Division..
     let req = Request::post("/maths/divide")
         .header("content-type", "application/json")
-        .body(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap())
+        .body(Bytes::from_vec(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap()))
         .unwrap();
     let actual: Value = serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
     let expected = serde_json::to_value(json!({ "a": 20, "b": 10, "result": 2 })).unwrap();
@@ -51,7 +52,7 @@ async fn main() {
     // Division, hitting our error..
     let req = Request::post("/maths/divide")
         .header("content-type", "application/json")
-        .body(serde_json::to_vec(&BinaryInput { a: 10, b: 0 }).unwrap())
+        .body(Bytes::from_vec(serde_json::to_vec(&BinaryInput { a: 10, b: 0 }).unwrap()))
         .unwrap();
     assert_eq!(
         api.handle(req).await.unwrap_err().unwrap_err(),
@@ -66,7 +67,7 @@ async fn main() {
     // API status:
     let req = Request::get("/meta/status")
         .header("content-type", "application/json")
-        .body(Vec::new())
+        .body(Bytes::from_vec(Vec::new()))
         .unwrap();
     let actual: Value =  serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
     let expected = serde_json::to_value(json!({ "status": "Ok" })).unwrap();

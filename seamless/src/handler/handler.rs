@@ -4,6 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
 use crate::handler::{ HandlerParam, HandlerBody };
+use crate::stream::AsyncReadBody;
 use super::response::HandlerResponse;
 use super::to_async::ToAsync;
 
@@ -11,13 +12,13 @@ use super::to_async::ToAsync;
 #[doc(hidden)]
 pub struct Handler {
     pub method: Method,
-    pub handler: Box<dyn Fn(Request<Vec<u8>>) -> Fut<Result<Response<Vec<u8>>,ApiError>> + Send + Sync>,
+    pub handler: Box<dyn for<'a> Fn(Request<&'a mut dyn AsyncReadBody>) -> Fut<'a, Result<Response<Vec<u8>>,ApiError>> + Send + Sync>,
     pub request_type: ApiBodyInfo,
     pub response_type: ApiBodyInfo
 }
 
 // A type alias for an overly complicated boxed Future type that can be sent across threads.
-type Fut<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// This trait is implemented for all handler functions which are
 /// applicable. Handler functions expect context arguments first, and
@@ -45,14 +46,14 @@ macro_rules! resolve_for_contexts {
         // usage will not overlap, and so the correct impl can be chosen.
         $(
 
-        impl <HandlerFn, Body, Res, Output, $($ctx,)* $($err,)* A>
-            IntoHandler<(WithBody, HandlerFn, Body, Res, Output, $($ctx,)* $($err,)* A)> for HandlerFn
+        impl <HandlerFn, BodyParam, Res, Output, $($ctx,)* $($err,)* A>
+            IntoHandler<(WithBody, HandlerFn, BodyParam, Res, Output, $($ctx,)* $($err,)* A)> for HandlerFn
         where
             // This is the rough shape we want a handler function to have:
-            HandlerFn: Fn($($ctx,)* Body) -> Res + Clone + Sync + Send + 'static,
+            HandlerFn: Fn($($ctx,)* BodyParam) -> Res + Clone + Sync + Send + 'static,
 
             // The last argument to handler functions should be a HandlerBody:
-            Body: HandlerBody + ApiBody + Send,
+            BodyParam: HandlerBody + ApiBody + Send,
 
             // Any other argument given must be a HandlerParam:
             $( $ctx: HandlerParam<Error=$err> + Send, )*
@@ -67,39 +68,35 @@ macro_rules! resolve_for_contexts {
             <Output as HandlerResponse>::ResponseBody: ApiBody
         {
             fn into_handler(self) -> Handler {
-                #[allow(unused_variables)]
-                let handler = move |req: Request<Vec<u8>>| {
-                    let inner_handler = self.clone();
-                    async move {
-
-                        let (parts, body) = req.into_parts();
-                        let bodyless_req = Request::from_parts(parts, ());
-
-                        $(
-                        #[allow(non_snake_case)]
-                        let $ctx = $ctx::handler_param(&bodyless_req)
-                            .await
-                            .map_err(|e| { let e: ApiError = e.into(); e })?;
-                        )*
-
-                        let (parts, _) = bodyless_req.into_parts();
-                        let req = Request::from_parts(parts, body);
-                        let body = Body::handler_body(req).await.map_err(|e| { let e: ApiError = e.into(); e })?;
-                        let response = inner_handler($($ctx,)* body)
-                            .to_async()
-                            .await
-                            .handler_response()
-                            .await
-                            .map_err(|e| { let e: ApiError = e.into(); e })?;
-
-                        Ok(response)
-                    }
-                };
-
                 Handler {
-                    method: Body::handler_method(),
-                    handler: Box::new(move |req| Box::pin(handler(req))),
-                    request_type: Body::api_body_info(),
+                    method: BodyParam::handler_method(),
+                    handler: Box::new(move |req: Request<&mut dyn AsyncReadBody>| {
+                        let inner_handler = self.clone();
+                        Box::pin(async move {
+                            let (parts, body) = req.into_parts();
+                            let bodyless_req = Request::from_parts(parts, ());
+    
+                            $(
+                            #[allow(non_snake_case)]
+                            let $ctx = $ctx::handler_param(&bodyless_req)
+                                .await
+                                .map_err(|e| { let e: ApiError = e.into(); e })?;
+                            )*
+    
+                            let (parts, _) = bodyless_req.into_parts();
+                            let req = Request::from_parts(parts, body);
+                            let body = BodyParam::handler_body(req).await.map_err(|e| { let e: ApiError = e.into(); e })?;
+                            let response = inner_handler($($ctx,)* body)
+                                .to_async()
+                                .await
+                                .handler_response()
+                                .await
+                                .map_err(|e| { let e: ApiError = e.into(); e })?;
+    
+                            Ok(response)
+                        })
+                    }),
+                    request_type: BodyParam::api_body_info(),
                     response_type: <Output as HandlerResponse>::ResponseBody::api_body_info()
                 }
             }
@@ -124,35 +121,32 @@ macro_rules! resolve_for_contexts {
             <Output as HandlerResponse>::ResponseBody: ApiBody
         {
             fn into_handler(self) -> Handler {
-                #[allow(unused_variables)]
-                let handler = move |req: Request<Vec<u8>>| {
-                    let inner_handler = self.clone();
-                    async move {
-
-                        let (parts, body) = req.into_parts();
-                        let bodyless_req = Request::from_parts(parts, ());
-
-                        $(
-                        #[allow(non_snake_case)]
-                        let $ctx = $ctx::handler_param(&bodyless_req)
-                            .await
-                            .map_err(|e| { let e: ApiError = e.into(); e })?;
-                        )*
-
-                        let response = inner_handler($($ctx),*)
-                            .to_async()
-                            .await
-                            .handler_response()
-                            .await
-                            .map_err(|e| { let e: ApiError = e.into(); e })?;
-
-                        Ok(response)
-                    }
-                };
-
                 Handler {
                     method: Method::GET,
-                    handler: Box::new(move |req| Box::pin(handler(req))),
+                    handler: Box::new(move |req| {
+                        let inner_handler = self.clone();
+                        Box::pin(async move {
+                            let (parts, _) = req.into_parts();
+                            #[allow(unused)]
+                            let bodyless_req = Request::from_parts(parts, ());
+    
+                            $(
+                            #[allow(non_snake_case)]
+                            let $ctx = $ctx::handler_param(&bodyless_req)
+                                .await
+                                .map_err(|e| { let e: ApiError = e.into(); e })?;
+                            )*
+    
+                            let response = inner_handler($($ctx),*)
+                                .to_async()
+                                .await
+                                .handler_response()
+                                .await
+                                .map_err(|e| { let e: ApiError = e.into(); e })?;
+    
+                            Ok(response)
+                        })
+                    }),
                     request_type: ApiBodyInfo {
                         description: "No request body is expected".to_owned(),
                         ty: crate::api::ApiBodyType::Null

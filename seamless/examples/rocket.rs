@@ -12,9 +12,11 @@ use rocket::data::ToByteUnit;
 use http::header::HeaderName;
 use std::io::Cursor;
 use std::sync::Arc;
+use tokio_util::compat::TokioAsyncReadCompatExt; 
 use seamless::{
     api::{ Api, RouteError },
-    handler::{ body::FromJson, response::ToJson }
+    handler::{ body::FromJson, response::ToJson },
+    stream::Bytes
 };
 
 #[rocket::launch]
@@ -40,18 +42,19 @@ struct SeamlessApi(Arc<Api>);
 impl Handler for SeamlessApi {
     async fn handle<'r, 's: 'r>(&'s self, req: &'r Request<'_>, data: Data) -> Outcome<'r> {
 
-        // Turn the body into a vec of bytes (max 4MB here):
-        let max_body_size = 4.megabytes();
-        let body = match data.open(max_body_size).stream_to_vec().await {
-            Ok(bytes) => bytes,
-            Err(_e) => return Outcome::failure(Status::BadRequest)
-        };
+        // Stream the body into `seamless`. We use the `compat` method from tokio-utils to 
+        // convert from `tokio::AsyncRead` to the `futures::AsyncRead` that seamless
+        // works with. We could alternately obtain a vector of bytes here, but by streaming
+        // it into seamless, we can do things like configuring per-request size limits, 
+        // immediately terminating the streaming if reached.
+        let body_reader = data.open(10.megabytes()).compat();
+        let streamed_body = Bytes::from_reader(body_reader);
 
         // Build an http::Request:
         let mut http_req = http::Request::builder()
             .method(req.method().as_str())
             .uri(req.uri().path())
-            .body(body)
+            .body(streamed_body)
             .unwrap();
 
         // Copy headers over:

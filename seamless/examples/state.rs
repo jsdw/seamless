@@ -4,6 +4,7 @@
 use seamless::{
     api::{ Api, ApiError },
     handler::{ HandlerParam, body::FromJson, response::ToJson },
+    stream::Bytes
 };
 
 // Something we want to inject into our handler.
@@ -45,7 +46,7 @@ async fn main() {
     // it's available for our `HandlerParam` trait to extract:
     let mut req = http::Request::post("/echo")
         .header("content-type", "application/json")
-        .body(serde_json::to_vec("hello").unwrap())
+        .body(Bytes::from_vec(serde_json::to_vec("hello").unwrap()))
         .unwrap();
 
     req.extensions_mut().insert(State);
