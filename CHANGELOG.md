@@ -1,3 +1,8 @@
+# v0.8.0
+
+- Accept request bodies which are `futures::AsyncRead + Send + Unpin` rather than `Vec<u8>` to allow streaming data into seamless endpoints. Code passing in `Vec<u8>` can be trivially updated to instead take `seamless::handler::request::Bytes::from_vec(body)`, although optimally you'd make better use of the new streaming capabilities if interested in doing so.
+- Introduce supporting code for the above, as well as a `Capped` struct which can wrap things like `FromJson` to impose request body byte limits (using const generics) on specific endpoints.
+
 # v0.7.2
 
 - Fix bug which made it hard to return a valid value from a handler function that didn't accept a body.

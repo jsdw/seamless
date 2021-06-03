@@ -19,7 +19,7 @@ Make sure that the documentation is gravy
 cargo doc --open
 ```
 
-Copy any doc changes from `seamless/lib.rs` to `seamless/README.md` and `README.md`.
+Copy any doc changes from `seamless/lib.rs` to the edited versions of `seamless/README.md` and `README.md`.
 
 ## Bump versions
 
