@@ -3,8 +3,7 @@ use http::{ Request, Response, method::Method };
 use std::future::Future;
 use std::pin::Pin;
 use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
-use crate::handler::{ HandlerParam, HandlerBody };
-use crate::stream::AsyncReadBody;
+use crate::handler::{ HandlerParam, HandlerBody, request::AsyncReadBody };
 use super::response::HandlerResponse;
 use super::to_async::ToAsync;
 

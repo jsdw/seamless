@@ -4,15 +4,14 @@
 
 use seamless::{
     api::{ Api, ApiBody, ApiError },
-    handler::{ body::{ FromJson }, response::ToJson },
+    handler::{ body::{ FromJson, Capped, IntoBody }, request::Bytes, response::ToJson },
     http::{ Request },
-    stream::Bytes
 };
 use serde_json::{ Value, json };
 
 #[tokio::main]
 async fn main() {
-
+ 
     // Instantiate our API:
     //
     let mut api = Api::new();
@@ -24,7 +23,11 @@ async fn main() {
         .handler(|FromJson(body)| ToJson::<String>(body));
     api.add("basic/reverse")
         .description("Reverse an array of numbers")
-        .handler(|body: FromJson<Vec<usize>>| ToJson(body.0.into_iter().rev().collect::<Vec<usize>>()));
+        // We cap the request body to 8kb (8 * 1024 bytes) by wrapping it in
+        // our 'Capped' type:
+        .handler(|body: Capped<FromJson<Vec<usize>>, {8 * 1024}>| {
+            ToJson(body.into_body().into_iter().rev().collect::<Vec<usize>>())
+        });
 
     // This route uses custom types (see below):
     api.add("meta/status")

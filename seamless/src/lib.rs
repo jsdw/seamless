@@ -1,17 +1,26 @@
 #![warn(missing_docs)]
 /*!
-The main goal of this library is to allow typesafe communication (and to a degree, documentation) generation
-between TypeScript and your Rust API. Using this library, that can all be automatically derived from just the
-Rust code, without any external definitions like OpenAPI being needed. The steps for using this library are:
+This library aims to provide an easy-to-use and extensible approach to declaring API routes, and will automatically
+keep track of various information surrounding requests and responses so that detailed route information (including type
+information) can be generated based on the current state of the API.
+
+This library is fully async, but totally independent from any particular async implementation (you don't even need to 
+toggle any feature flags).
+
+Using Seamless, we can write our API in pure Rust, and from that generate a TypeScript based API client (or just the types, 
+or just documentation) based on the current state of the API. This allows us to achieve type safe communication between the
+API and TypeScript-like clients without relying on external specifications like OpenAPI.
+
+The typical steps for using this library are:
 
 - Annotate your input and output types for these routes with the [`macro@ApiBody`] macro.
-- Derive [`macro@ApiError`] (or manually implement `Into<ApiError`) on any errors you wish to emit.
+- Derive [`macro@ApiError`] (or manually implement `Into<ApiError>`) on any errors you wish to emit.
 - Declare each of your API routes using this library. API handlers can just ask for whatever they need as a
-  function parameter, including state or user info based on the incoming request.
+  function parameter, including arbitrary state or information based on the incoming request (you decide).
 - Once the API routes are declared, use [`Api::info()`] to obtain enough information about the API to
   generate fully type safe client code (the information is optimised towards generating TypeScript types/code).
 - Integrate this API with something like `warp` or `rocket` so that your `seamless` API routes can live alongside
-  everything else that you'd like to serve.
+  everything else that you'd like to serve (see the examples for how this can be done).
 
 Have a look at the examples in the `examples` directory to get a proper feel for how this library can be used, or
 keep reading!
@@ -25,7 +34,7 @@ Below is a basic self contained example of using this library.
 use seamless::{
     http::{ Request },
     api::{ Api, ApiBody, ApiError },
-    handler::{ body::FromJson, response::ToJson }
+    handler::{ body::FromJson, request::Bytes, response::ToJson }
 };
 
 // The API relies on types that have been annotated with `ApiBody` (request and response
@@ -86,7 +95,7 @@ api.add("/maths.divide")
 
 let req = Request::post("/maths.divide")
     .header("content-type", "application/json")
-    .body(serde_json::to_vec(&DivisionInput { a: 20, b: 10 }).unwrap())
+    .body(Bytes::from_vec(serde_json::to_vec(&DivisionInput { a: 20, b: 10 }).unwrap()))
     .unwrap();
 assert_eq!(
     api.handle(req).await.unwrap().into_body(),
@@ -109,7 +118,7 @@ Here's an example:
 ```rust
 use seamless::{
     api::{ Api, ApiBody, ApiError },
-    handler::{ HandlerParam, body::FromJson, response::ToJson },
+    handler::{ HandlerParam, body::FromJson, request::Bytes, response::ToJson },
 };
 # #[ApiBody]
 # struct BinaryInput { a: usize, b: usize }
@@ -146,7 +155,7 @@ api.add("/echo")
 
 let mut req = http::Request::post("/echo")
     .header("content-type", "application/json")
-    .body(serde_json::to_vec("hello").unwrap())
+    .body(Bytes::from_vec(serde_json::to_vec("hello").unwrap()))
     .unwrap();
 
 // When passing a request into our API, remember to inject `State` too so that
@@ -313,16 +322,12 @@ access to, and being able to handle the `http::Response` or error that's handed 
 Seamless is designed to make it easy to create simple RPC style JSON APIs that can be "seamlessly" typed from client
 to server without using external tools like OpenAPI.
 
-- Seamless has not been optimised for building RESTful style APIs (notably, the ability to work with query params is
-lacking, because they do not play nicely with the type safety that this library tries to provide).
+- Seamless has not been optimised for building RESTful style APIs. However, the [`handler::HandlerBody`] and
+[`handler::HandlerParam`] traits in particular provide a bunch of extensibility.
 - Some of the flexiblity that `Serde` provides for manipulating how types are serialized and deserialized is not
 available. This library takes the approach of 'wrapping' serde using the [`macro@ApiBody`] macro to deliberately restrict
 how you can transform types, ensuring that any transformations allowed are properly supported and lead to the correct
 type information being generated.
-- Streaming request and response bodies back from seamless is currently not supported. For simplicity, bodies are
-expected to be `Vec<u8>`s so that the yare easy to work with. It's expected that JSON will be the main method by
-which this library inputs and outputs data, and JSON doesn't stream well naturally, so this does not seem like a big
-loss at present.
 */
 
 pub mod handler;
@@ -331,8 +336,6 @@ pub mod api;
 // Only exposed for seamless_macros; doesn't need to be documented
 #[doc(hidden)]
 pub mod serde;
-
-pub mod stream;
 
 pub use seamless_macros::*;
 

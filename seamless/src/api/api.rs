@@ -3,8 +3,7 @@ use http::{ Request, Response, method::Method };
 use serde::{ Serialize };
 use super::info::{ ApiBodyInfo };
 use super::error::ApiError;
-use crate::stream::AsyncReadBody;
-use crate::handler::{ Handler, IntoHandler };
+use crate::handler::{ Handler, IntoHandler, request::AsyncReadBody };
 
 /// The entry point; you can create an instance of this and then add API routes to it
 /// using [`Self::add()`]. You can then get information about the routes that have been added
@@ -85,7 +84,7 @@ impl Api {
     /// else we'll get back a [`RouteError`], which will either be [`RouteError::NotFound`] if no matching
     /// route was found, or a [`RouteError::Err`] if a matching route was found, but that handler emitted
     /// an error.
-    pub async fn handle<'a, Body: AsyncReadBody>(&self, req: Request<Body>) -> Result<Response<Vec<u8>>, RouteError<Body, ApiError>> {
+    pub async fn handle<Body: AsyncReadBody>(&self, req: Request<Body>) -> Result<Response<Vec<u8>>, RouteError<Body, ApiError>> {
         let base_path = &self.base_path.trim_start_matches('/');
         let req_path = req.uri().path().trim_start_matches('/');
 

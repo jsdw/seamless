@@ -15,6 +15,11 @@ pub mod body;
 /// return from handler functions.
 pub mod response;
 
+/// This contains helpers around the body that you'll need to provide as part
+/// of an [`http::Request`], mainly geared around allowing requests to be streamed
+/// in if desired.
+pub mod request;
+
 pub use body::{ HandlerBody };
 pub use param::{ HandlerParam };
 pub use response::{ HandlerResponse };

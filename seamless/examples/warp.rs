@@ -13,8 +13,7 @@ use std::io::Read;
 use std::sync::Arc;
 use seamless::{
     api::{ Api, RouteError},
-    handler::{ body::FromJson, response::ToJson },
-    stream
+    handler::{ body::FromJson, request::Bytes as RequestBytes, response::ToJson },
 };
 
 #[tokio::main]
@@ -40,7 +39,7 @@ async fn main() {
 }
 
 // We can write a wap filter that returns an `http::Request` given an incoming request:
-pub fn extract_request() -> impl Filter<Extract=(http::Request<stream::Bytes>,), Error=warp::Rejection> + Copy {
+pub fn extract_request() -> impl Filter<Extract=(http::Request<RequestBytes>,), Error=warp::Rejection> + Copy {
     warp::method()
         .and(warp::path::full())
         .and(warp::header::headers_cloned())
@@ -57,7 +56,7 @@ pub fn extract_request() -> impl Filter<Extract=(http::Request<stream::Bytes>,),
             let mut req = http::Request::builder()
                 .method(method)
                 .uri(path.as_str())
-                .body(stream::Bytes::from_vec(bytes))
+                .body(RequestBytes::from_vec(bytes))
                 .expect("request builder");
             { *req.headers_mut() = headers; }
             req
@@ -76,7 +75,7 @@ impl warp::reject::Reject for SeamlessApiError {}
 pub fn to_warp_filter(api: seamless::Api) -> BoxedFilter<(impl warp::Reply,)> {
     let api = Arc::new(api);
     extract_request()
-        .and_then(move |req: http::Request<stream::Bytes>| {
+        .and_then(move |req: http::Request<RequestBytes>| {
             let api = api.clone();
             async move {
                 // In reality we should also check for the correct Content-Type and

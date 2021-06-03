@@ -15,8 +15,7 @@ use std::sync::Arc;
 use tokio_util::compat::TokioAsyncReadCompatExt; 
 use seamless::{
     api::{ Api, RouteError },
-    handler::{ body::FromJson, response::ToJson },
-    stream::Bytes
+    handler::{ body::FromJson, request::Bytes, response::ToJson },
 };
 
 #[rocket::launch]
