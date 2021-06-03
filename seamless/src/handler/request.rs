@@ -80,6 +80,52 @@ impl Bytes {
     }
 }
 
+#[cfg(test)]
+mod test_bytes {
+    use super::*;
+    use futures::AsyncReadExt;
+
+    #[tokio::test]
+    async fn can_read_from_vec() {
+        let mut bytes = Bytes::from_vec(vec![1,2,3,4,5]);
+
+        let mut output = vec![];
+        let n = bytes.read_to_end(&mut output).await.expect("No error should occur reading back the bytes");
+
+        assert_eq!(n, 5);
+        assert_eq!(output, vec![1,2,3,4,5]);
+    }
+
+    #[tokio::test]
+    async fn can_read_from_reader() {
+        // We use another instance of Bytes as our reader:
+        let mut bytes = Bytes::from_reader(Bytes::from_vec(vec![1,2,3,4,5]));
+
+        let mut output = vec![];
+        let n = bytes.read_to_end(&mut output).await.expect("No error should occur reading back the bytes");
+
+        assert_eq!(n, 5);
+        assert_eq!(output, vec![1,2,3,4,5]);
+    }
+
+    #[tokio::test]
+    async fn can_read_from_stream() {
+        let mut bytes = Bytes::from_stream(futures::stream::iter(vec![
+            Ok(vec![1]),
+            Ok(vec![2]),
+            Ok(vec![3]),
+            Ok(vec![4]),
+            Ok(vec![5]),
+        ]));
+
+        let mut output = vec![];
+        let n = bytes.read_to_end(&mut output).await.expect("No error should occur reading back the bytes");
+
+        assert_eq!(n, 5);
+        assert_eq!(output, vec![1,2,3,4,5]);
+    }
+}
+
 /// This wraps other `AsyncRead` impls and caps how many bytes can be
 /// read from the underlying reader before an `UnexpectedEof` error is
 /// returned. The cap exists at the type level via `const MAX`.
@@ -129,5 +175,48 @@ impl <T: AsyncRead, const MAX: usize> CappedAsyncRead<T, MAX> {
             inner: read,
             bytes_read: 0
         }
+    }
+}
+
+#[cfg(test)]
+mod test_capped_reader {
+    use super::*;
+    use futures::AsyncReadExt;
+
+    #[tokio::test]
+    async fn capped_reader_ok_with_0_bytes() {
+        // no bytes to read:
+        let input = vec![];
+        let mut capped_reader = CappedAsyncRead::<_, 5>::new(&*input);
+
+        let mut output = vec![];
+        let n = capped_reader.read_to_end(&mut output).await.expect("No error should occur reading no bytes");
+        assert_eq!(n, 0);
+        assert_eq!(output, Vec::<u8>::new());
+    }
+
+    #[tokio::test]
+    async fn capped_reader_errors_if_limit_exceeded() {
+        // 6 bytes to read:
+        let input = vec![1,2,3,4,5,6];
+        // 5 byte limit though:
+        let mut limit_to_5_bytes = CappedAsyncRead::<_, 5>::new(&*input);
+
+        let mut output = vec![];
+        let err = limit_to_5_bytes.read_to_end(&mut output).await.expect_err("Exceeded limit: error expected");
+        assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
+    }
+
+    #[tokio::test]
+    async fn capped_reader_ok_if_limit_not_exceeded() {
+        // 5 bytes to read:
+        let input = vec![1,2,3,4,5];
+        // 5 byte limit, so all OK:
+        let mut limit_to_5_bytes = CappedAsyncRead::<_, 5>::new(&*input);
+
+        let mut output = vec![];
+        let n = limit_to_5_bytes.read_to_end(&mut output).await.expect("Should successfully read all bytes");
+        assert_eq!(n, 5);
+        assert_eq!(output, vec![1,2,3,4,5]);
     }
 }
