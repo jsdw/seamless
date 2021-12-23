@@ -205,6 +205,7 @@ impl_api_body! {
     std::sync::atomic::AtomicU16,
     std::sync::atomic::AtomicU32,
     std::sync::atomic::AtomicU64,
+    serde_json::Number,
     std::sync::atomic::AtomicUsize => ApiBodyType::Number,
     bool,
     std::sync::atomic::AtomicBool => ApiBodyType::Boolean,
@@ -262,6 +263,15 @@ impl ApiBody for serde_json::Value {
         ApiBodyInfo {
             description: String::new(),
             ty: ApiBodyType::Any
+        }
+    }
+}
+
+impl <T: ApiBody> ApiBody for serde_json::Map<String, T> {
+    fn api_body_info() -> ApiBodyInfo {
+        ApiBodyInfo {
+            description: String::new(),
+            ty: ApiBodyType::ObjectOf { value: Box::new(T::api_body_info()) }
         }
     }
 }

@@ -1,3 +1,9 @@
+# 0.9.0
+
+- Update to 2021 edition.
+- impl `ApiBody` for `serde_json::Map<String,T>` and `serde_json::Number`.
+- ensure Seamless points to its re-export of `serde` in the macro so that `serde` not a required dep in projects using Seamless.
+
 # v0.8.0
 
 - Accept request bodies which are `futures::AsyncRead + Send + Unpin` rather than `Vec<u8>` to allow streaming data into seamless endpoints. Code passing in `Vec<u8>` can be trivially updated to instead take `seamless::handler::request::Bytes::from_vec(body)`, although optimally you'd make better use of the new streaming capabilities if interested in doing so.

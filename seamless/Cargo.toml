@@ -1,8 +1,8 @@
 [package]
 name = "seamless"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["James Wilson <james@jsdw.me>"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/jsdw/seamless"
@@ -20,7 +20,7 @@ async-trait = "0.1.36"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 http = "0.2.1"
-seamless_macros = { version = "0.8.0", path = "../seamless-macros" }
+seamless_macros = { version = "0.9.0", path = "../seamless-macros" }
 
 # impls for these if we want them:
 uuid = { version = "0.8", optional = true, features = ["serde"] }
@@ -28,8 +28,9 @@ chrono = { version = "0.4.11", optional = true, features = ["serde"] }
 futures = "0.3.15"
 
 [dev-dependencies]
-trybuild = "1.0"
+trybuild = "1.0.53"
 pretty_assertions = "0.6.1"
+serde_json = "1"
 thiserror = "1.0.23"
 tokio = { version = "1.1.0", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-util = { version = "0.6.7", features = ["compat"] }

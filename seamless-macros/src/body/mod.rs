@@ -21,19 +21,20 @@ pub fn parse_top_attrs(attrs: TokenStream) -> Attrs {
         .parse(attrs)
         .expect("Invalid Api attributes provided");
 
-    let (serialize, deserialize) = if attrs.len() == 0 {
-        (true, true)
-    } else {
-        let mut se = false;
-        let mut de = false;
-        for ident in attrs {
-            if ident == "Serialize" { se = true }
-            else if ident == "Deserialize" { de = true}
-        }
-        (se, de)
-    };
+    // If Serialize or Deserialize attrs given, only
+    // do that one. If none given, do both.
+    let mut se = false;
+    let mut de = false;
+    for ident in attrs {
+        if ident == "Serialize" { se = true }
+        else if ident == "Deserialize" { de = true}
+    }
+    if !se && !de {
+        se = true;
+        de = true;
+    }
 
-    Attrs { serialize, deserialize }
+    Attrs { serialize: se, deserialize: de }
 }
 
 pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
@@ -160,9 +161,14 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
     let mut sanitized_e = e;
     sanitized_e.attrs.retain(|attr| !attr.path.is_ident(attrs::NAME));
 
+    // We tell serde where to look for its crate contents (otherwise it expects `serde::*`
+    // to exist, which it might not.)
+    let serde_crate_path = format!("::{}::serde", crate_name);
+
     Ok(quote!{
         #serialize_toks
         #deserialize_toks
+        #[serde(crate = #serde_crate_path)]
         #serde_tag_attr
         #sanitized_e
 
@@ -295,9 +301,14 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
         }
     }
 
+    // We tell serde where to look for its crate contents (otherwise it expects `serde::*`
+    // to exist, which it might not.)
+    let serde_crate_path = format!("::{}::serde", crate_name);
+
     Ok(quote!{
         #serialize_toks
         #deserialize_toks
+        #[serde(crate = #serde_crate_path)]
         #sanitized_s
 
         #ts_impl

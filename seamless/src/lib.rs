@@ -4,10 +4,10 @@ This library aims to provide an easy-to-use and extensible approach to declaring
 keep track of various information surrounding requests and responses so that detailed route information (including type
 information) can be generated based on the current state of the API.
 
-This library is fully async, but totally independent from any particular async implementation (you don't even need to 
+This library is fully async, but totally independent from any particular async implementation (you don't even need to
 toggle any feature flags).
 
-Using Seamless, we can write our API in pure Rust, and from that generate a TypeScript based API client (or just the types, 
+Using Seamless, we can write our API in pure Rust, and from that generate a TypeScript based API client (or just the types,
 or just documentation) based on the current state of the API. This allows us to achieve type safe communication between the
 API and TypeScript-like clients without relying on external specifications like OpenAPI.
 
@@ -333,9 +333,11 @@ type information being generated.
 pub mod handler;
 pub mod api;
 
-// Only exposed for seamless_macros; doesn't need to be documented
+// Only exposed for seamless_macros; we point serde here. Doesn't need to be documented
 #[doc(hidden)]
-pub mod serde;
+pub mod serde {
+    pub use serde::*;
+}
 
 pub use seamless_macros::*;
 

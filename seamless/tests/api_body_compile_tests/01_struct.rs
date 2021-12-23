@@ -14,6 +14,13 @@ struct Bar {
     another: String
 }
 
+#[seamless::ApiBody]
+/// The serde JSON types are supported.
+struct SerdeJsonTypes {
+    m: serde_json::Map<String, serde_json::Value>,
+    n: serde_json::Number
+}
+
 fn main () {
 
 }
