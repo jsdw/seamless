@@ -24,7 +24,7 @@ pub trait HandlerBody: Sized {
     fn handler_method() -> Method { Method::POST }
 }
 
-/// A simple trait that makes it a little more ergonomic in some cases to extract the body 
+/// A simple trait that makes it a little more ergonomic in some cases to extract the body
 /// out of our various types like [`FromJson`] and [`FromBinary`]. Useful when we combine
 /// types like [`Capped`] so that we can avoid multiple layers of unwrapping.
 pub trait IntoBody {
@@ -39,7 +39,7 @@ pub trait IntoBody {
 
 /// If the last argument to a handler is this, we'll assume
 /// that the user needs to provide JSON that decodes to `T`.
-/// Notably, `T` needs to implement `ApiBody` with the 
+/// Notably, `T` needs to implement `ApiBody` with the
 /// Deserialize option.
 pub struct FromJson<T: ApiBody>(pub T);
 
@@ -138,7 +138,7 @@ impl ApiBody for FromBinary {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: "Binary data".to_owned(),
-            ty: crate::api::ApiBodyType::String
+            ty: crate::api::ApiBodyType::Binary
         }
     }
 }

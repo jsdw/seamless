@@ -43,9 +43,19 @@ pub enum ApiBodyType {
     Null,
     /// Corresponds to the TypeScript type `any`.
     ///
-    /// This is used when the shape cannot be statically
-    /// determined for one reason or another.
+    /// This is used when the shape cannot be statically determined, and we want to
+    /// indicate that any type can be provided. In many cases [`ApiBodyType::Unknown`]
+    /// may be preferred.
     Any,
+    /// Corresponds to the TypeScript type `unknown`.
+    ///
+    /// This is used when the shape cannot be statically determined, and we want to
+    /// indicate that we're not sure what the type is, unlike [`ApiBodyType::Any`]
+    /// which hints that *any* type can be provided.
+    Unknown,
+    /// Indicate that we expect binary data to be provided. This may correspond to
+    /// `Blob` in a UI.
+    Binary,
     /// An array of values of one type, where each value has the type `value`, eg
     /// `string[]` or `number[]`.
     ArrayOf {

@@ -1,3 +1,7 @@
+# 0.10.0
+
+- Add `Unknown` and `Binary` types. The former corresponds to `unknown` in TypeScript, and the latter probably corresponds to `Blob` (depending on your environment) but is a sort-fo special case that can be useful to support.
+
 # 0.9.0
 
 - Update to 2021 edition.
