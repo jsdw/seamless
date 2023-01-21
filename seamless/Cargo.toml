@@ -1,6 +1,6 @@
 [package]
 name = "seamless"
-version = "0.10.0"
+version = "0.11.0"
 authors = ["James Wilson <james@jsdw.me>"]
 edition = "2021"
 license = "MIT"
@@ -13,7 +13,7 @@ An opinionated library to easily create RPC style JSON APIs
 """
 
 [features]
-default = ["uuid", "chrono"]
+default = ["uuid"]
 
 [dependencies]
 async-trait = "0.1.36"
@@ -21,11 +21,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 http = "0.2.1"
 seamless_macros = { version = "0.10.0", path = "../seamless-macros" }
-
-# impls for these if we want them:
-uuid = { version = "0.8", optional = true, features = ["serde"] }
-chrono = { version = "0.4.11", optional = true, features = ["serde"] }
 futures = "0.3.15"
+
+# Optional dependencies to impl ApiBody for.
+uuid = { version = "1", optional = true }
 
 [dev-dependencies]
 trybuild = "1.0.53"

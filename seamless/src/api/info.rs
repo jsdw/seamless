@@ -290,17 +290,7 @@ impl <T: ApiBody> ApiBody for serde_json::Map<String, T> {
 impl ApiBody for uuid::Uuid {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
-            description: "A UUID".to_owned(),
-            ty: ApiBodyType::String
-        }
-    }
-}
-
-#[cfg(feature = "chrono")]
-impl ApiBody for chrono::NaiveDateTime {
-    fn api_body_info() -> ApiBodyInfo {
-        ApiBodyInfo {
-            description: "A Datetime".to_owned(),
+            description: "A 128 bit UUID".to_owned(),
             ty: ApiBodyType::String
         }
     }
