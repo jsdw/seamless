@@ -3,3 +3,4 @@ members = [
     "seamless",
     "seamless-macros"
 ]
+resolver = "2"

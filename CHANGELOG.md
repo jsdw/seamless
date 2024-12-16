@@ -1,3 +1,8 @@
+# 0.12.0
+
+- Upgrade to http 1.0.
+- Repalce Warp example with Axum example.
+
 # 0.11.0
 
 - Remove `chrono` optional dependency and bump `uuid` dependency to "1".

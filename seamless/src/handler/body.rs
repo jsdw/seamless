@@ -1,11 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
 use http::{ Request, method::Method };
-use serde::{ de::DeserializeOwned };
+use serde::de::DeserializeOwned;
 use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
 use crate::handler::request::{ AsyncReadBody, CappedAsyncRead };
 use async_trait::async_trait;
-use futures::{ AsyncReadExt };
+use futures::AsyncReadExt;
 
 /// This trait is implemented by anything that represents the incoming request type.
 /// Only one argument implementing this can be asked for in a given handler. The type

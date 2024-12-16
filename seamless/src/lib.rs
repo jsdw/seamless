@@ -339,8 +339,6 @@ pub mod serde {
     pub use serde::*;
 }
 
-pub use seamless_macros::*;
-
 pub use async_trait::async_trait;
 
 /// A re-export of types from the `http` crate that are useful here.

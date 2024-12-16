@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-
-pub use serde::{ Serialize, Deserialize };
+use serde::Serialize;
 
 /// A representation of some type, including its description and shape.
 /// This is given back for anything which implements the [`trait@crate::ApiBody`] trait,

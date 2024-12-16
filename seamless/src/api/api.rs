@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use http::{ Request, Response, method::Method };
-use serde::{ Serialize };
-use super::info::{ ApiBodyInfo };
+use serde::Serialize;
+use super::info::ApiBodyInfo;
 use super::error::ApiError;
 use crate::handler::{ Handler, IntoHandler, request::AsyncReadBody };
 
