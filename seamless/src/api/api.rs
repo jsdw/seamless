@@ -64,7 +64,7 @@ impl Api {
     ///     ToJson(ns.into_iter().sum())
     /// }
     /// ```
-    pub fn add<P: Into<String>>(&mut self, path: P) -> RouteBuilder {
+    pub fn add<P: Into<String>>(&mut self, path: P) -> RouteBuilder<'_> {
         RouteBuilder::new(self, path.into())
     }
 

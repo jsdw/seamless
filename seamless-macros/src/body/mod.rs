@@ -159,7 +159,7 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
 
     // "api_body" tag attr, if used, needs stripping before we output the enum:
     let mut sanitized_e = e;
-    sanitized_e.attrs.retain(|attr| !attr.path.is_ident(attrs::NAME));
+    sanitized_e.attrs.retain(|attr| !attr.path().is_ident(attrs::NAME));
 
     // We tell serde where to look for its crate contents (otherwise it expects `serde::*`
     // to exist, which it might not.)
@@ -293,7 +293,7 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
     for field in sanitized_s.fields.iter_mut() {
         let attr_props = attrs::parse(&field.attrs)?;
         // Keep all attributes that aren't ours:
-        field.attrs.retain(|attr| !attr.path.is_ident(attrs::NAME));
+        field.attrs.retain(|attr| !attr.path().is_ident(attrs::NAME));
         // Append back on a serde(flatten) attr if the field was marked with api_body(flatten):
         if attr_props.flatten {
             let new_attr: syn::Attribute = syn::parse_quote!{ #[serde(flatten)] };

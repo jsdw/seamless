@@ -1,13 +1,33 @@
-error[E0277]: the trait bound `for<'de> Foo: Deserialize<'de>` is not satisfied
-   --> tests/api_body_compile_tests/07_serialize_enum_only.rs:11:18
-    |
-11  |     let f: Foo = ApiBody::from_json_value(json!({
-    |                  ^^^^^^^^^^^^^^^^^^^^^^^^ the trait `for<'de> Deserialize<'de>` is not implemented for `Foo`
-    |
-    = note: required because of the requirements on the impl of `DeserializeOwned` for `Foo`
-note: required by `from_json_value`
-   --> src/api/info.rs
-    |
-    | /     fn from_json_value(value: serde_json::Value) -> serde_json::Result<Self>
-    | |     where Self: ::serde::de::DeserializeOwned {
-    | |_____________________________________________^
+error[E0277]: the trait bound `Foo: serde::de::DeserializeOwned` is not satisfied
+  --> tests/api_body_compile_tests/07_serialize_enum_only.rs:11:18
+   |
+11 |       let f: Foo = ApiBody::from_json_value(json!({
+   |  __________________^
+12 | |         "kind": "Bar",
+13 | |         "n": 10
+14 | |     })).unwrap();
+   | |_______^ unsatisfied trait bound
+   |
+help: the trait `for<'de> seamless::serde::Deserialize<'de>` is not implemented for `Foo`
+  --> tests/api_body_compile_tests/07_serialize_enum_only.rs:5:1
+   |
+ 5 | enum Foo {
+   | ^^^^^^^^
+   = help: the following other types implement trait `seamless::serde::Deserialize<'de>`:
+             &'a Path
+             &'a RawValue
+             &'a [u8]
+             &'a str
+             ()
+             (T,)
+             (T0, T1)
+             (T0, T1, T2)
+           and $N others
+   = note: required for `Foo` to implement `seamless::serde::de::DeserializeOwned`
+note: required by a bound in `from_json_value`
+  --> src/api/info.rs
+   |
+   |     fn from_json_value(value: serde_json::Value) -> serde_json::Result<Self>
+   |        --------------- required by a bound in this associated function
+   |     where Self: ::serde::de::DeserializeOwned {
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ApiBody::from_json_value`

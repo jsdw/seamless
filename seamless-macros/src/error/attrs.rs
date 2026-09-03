@@ -1,5 +1,3 @@
-use syn::{ spanned::Spanned };
-
 #[derive(Debug)]
 pub struct FinalApiErrorAttrs {
     pub external_message: Option<String>,
@@ -9,7 +7,6 @@ pub struct FinalApiErrorAttrs {
 
 #[derive(Debug)]
 pub struct ApiErrorAttrs {
-    attr_tok: Option<syn::Attribute>,
     external_tok: Option<syn::Path>,
     internal_tok: Option<syn::Path>,
     inner_tok: Option<syn::Path>,
@@ -19,10 +16,8 @@ pub struct ApiErrorAttrs {
 
 impl ApiErrorAttrs {
     pub fn finalise(mut self) -> syn::Result<FinalApiErrorAttrs> {
-
-        let attr_span = self.attr_tok.span();
         let code = self.code
-            .unwrap_or(syn::LitInt::new("500", attr_span))
+            .unwrap_or(syn::parse_quote!(500))
             .base10_parse::<u16>()?;
         let parse_str = |s: Option<syn::LitStr>| {
             s.map(|s| s.value()).unwrap_or(String::from("Internal server error"))
@@ -65,6 +60,7 @@ impl ApiErrorAttrs {
             })
         }
     }
+
     pub fn finalise_with_parent_attrs(mut self, parent: &ApiErrorAttrs) -> syn::Result<FinalApiErrorAttrs> {
         // Only self can have an "inner" attr:
         if let Some(t) = &parent.inner_tok {
@@ -82,74 +78,48 @@ impl ApiErrorAttrs {
         }
         self.finalise()
     }
-    pub fn parse(attrs: &[syn::Attribute]) -> syn::Result<ApiErrorAttrs> {
 
-        let mut attr_tok = None;
+    pub fn parse(attrs: &[syn::Attribute]) -> syn::Result<ApiErrorAttrs> {
         let mut internal_tok: Option<syn::Path> = None;
         let mut external_tok: Option<syn::Path> = None;
         let mut inner_tok: Option<syn::Path> = None;
         let mut external_message: Option<syn::LitStr> = None;
         let mut code: Option<syn::LitInt> = None;
 
-        let lit_str = |lit: syn::Lit| {
-            match lit {
-                syn::Lit::Str(s) => Ok(s),
-                bad => Err(syn::Error::new_spanned(bad, "string literal required here"))
-            }
-        };
-        let lit_int = |lit: syn::Lit| {
-            match lit {
-                syn::Lit::Int(i) => Ok(i),
-                bad => Err(syn::Error::new_spanned(bad, "u16 integer literal required here"))
-            }
-        };
-
         for attr in attrs {
             // Ignore all attributes we don't care about
-            if !attr.path.is_ident("api_error") {
+            if !attr.path().is_ident("api_error") {
                 continue
             }
-            attr_tok = Some(attr.clone());
 
-            // We should have a list of meta attributes inside the attr path
-            let meta_list = match attr.parse_meta()? {
-                syn::Meta::List(list) => list,
-                bad => return Err(syn::Error::new_spanned(bad, "unrecognized attribute"))
-            };
+            attr.parse_nested_meta(|meta| {
+                let value = meta.value();
+                let path = meta.path;
 
-            for item in meta_list.nested {
-                // Each list item should be a meta item:
-                let meta = match item {
-                    syn::NestedMeta::Meta(meta) => meta,
-                    bad => return Err(syn::Error::new_spanned(bad, "unrecognized attribute"))
-                };
-
-                match meta {
-                    // Handle eg #[api_error(internal, external)]
-                    syn::Meta::Path(path) => {
-                        if path.is_ident("internal") {
-                            internal_tok = Some(path);
-                        } else if path.is_ident("external") {
+                if path.is_ident("internal") {
+                    internal_tok = Some(path);
+                } else if path.is_ident("external") {
+                    match value {
+                        Ok(val) => {
+                            // If `= value`, parse the value as a string
+                            external_message = Some(val.parse()?);
+                        },
+                        Err(_) => {
+                            // If no value, that's all good too.
                             external_tok = Some(path);
-                        } else if path.is_ident("inner") {
-                            inner_tok = Some(path)
-                        } else {
-                            return Err(syn::Error::new_spanned(path, "unrecognized attribute"))
                         }
-                    },
-                    // Handle eg #[api_error(internal = "foo", external = "bar", code = 200)]
-                    syn::Meta::NameValue(name_value) => {
-                        if name_value.path.is_ident("external") {
-                            external_message = Some(lit_str(name_value.lit)?);
-                        } else if name_value.path.is_ident("code") {
-                            code = Some(lit_int(name_value.lit)?);
-                        } else {
-                            return Err(syn::Error::new_spanned(name_value, "unrecognized attribute"))
-                        }
-                    },
-                    bad => return Err(syn::Error::new_spanned(bad, "unrecognized attribute"))
+                    }
+                } else if path.is_ident("inner") {
+                    inner_tok = Some(path);
+                } else if path.is_ident("code") {
+                    // Here we expect `= number` else we'll error
+                    code = Some(value?.parse()?);
+                } else {
+                    return Err(syn::Error::new_spanned(path, "unrecognized attribute"))
                 }
-            }
+
+                Ok(())
+            })?;
         }
 
         // A thing can't be marked "inner" and have any other internal/external/code props,
@@ -174,14 +144,11 @@ impl ApiErrorAttrs {
         }
 
         return Ok(ApiErrorAttrs {
-            attr_tok: attr_tok,
             external_tok: external_tok,
             internal_tok: internal_tok,
             inner_tok: inner_tok,
             external_message: external_message,
             code: code
         })
-
     }
 }
-

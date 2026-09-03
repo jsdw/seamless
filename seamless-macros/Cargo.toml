@@ -16,7 +16,7 @@ Macros to complement the 'seamless' library
 proc-macro = true
 
 [dependencies]
-syn = { version = "1", features = ["full", "extra-traits"] }
+syn = { version = "3", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"
 

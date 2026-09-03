@@ -5,7 +5,6 @@ use proc_macro2::{ TokenStream as TokenStream2, Span };
 use attrs::ApiErrorAttrs;
 
 pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
-
     let struct_name = &s.ident;
     let crate_name = syn::Ident::new("seamless", Span::call_site());
 
