@@ -1,5 +1,5 @@
-use pretty_assertions::{ assert_eq };
-use seamless::api::{ ApiBodyType, ApiBodyInfo };
+use pretty_assertions::assert_eq;
+use seamless::api::{ApiBodyInfo, ApiBodyType};
 use seamless::ApiBody;
 
 macro_rules! map {
@@ -16,7 +16,6 @@ fn s(s: &str) -> String {
 
 #[test]
 fn has_struct_shape() {
-
     #[ApiBody]
     #[allow(dead_code)]
     /// Foo comment
@@ -24,16 +23,17 @@ fn has_struct_shape() {
         /// Prop comment
         prop: usize,
         /// Another prop comment
-        another_prop: bool
+        another_prop: bool,
     }
 
     let f = Foo::api_body_info();
 
-    assert_eq!(f,
+    assert_eq!(
+        f,
         ApiBodyInfo {
             description: s("Foo comment"),
             ty: ApiBodyType::Object {
-                keys: map!{
+                keys: map! {
                     s("prop") => ApiBodyInfo {
                         description: s("Prop comment"),
                         ty: ApiBodyType::Number
@@ -50,90 +50,102 @@ fn has_struct_shape() {
 
     // Sanity check that serde outputs a format which aligns with expectation:
     assert_eq!(
-        Foo { prop: 2, another_prop: true }.to_json_value(),
+        Foo {
+            prop: 2,
+            another_prop: true
+        }
+        .to_json_value(),
         serde_json::json!({ "prop": 2, "another_prop": true })
     )
 }
 
 #[test]
 fn has_enum_shape() {
-
     #[ApiBody]
     #[allow(dead_code)]
     enum Foo {
         /// Lark is larky
         Lark {
             /// Lark1
-            lark1: String
+            lark1: String,
         },
         /// Other is different
         Other(Other),
         AnotherOther(Other),
         /// Bar is empty
-        Bar {}
+        Bar {},
     }
 
     #[ApiBody]
     #[allow(dead_code)]
     /// Other comes from here
     struct Other {
-        other_prop: bool
+        other_prop: bool,
     }
 
     let f = Foo::api_body_info();
 
-    assert_eq!(f,
+    assert_eq!(
+        f,
         ApiBodyInfo {
             description: s(""),
-            ty: ApiBodyType::OneOf { values:
-                vec![
+            ty: ApiBodyType::OneOf {
+                values: vec![
                     ApiBodyInfo {
                         description: s("Lark is larky"),
-                        ty: ApiBodyType::Object { keys: map!{
-                            s("kind") => ApiBodyInfo {
-                                description: s("Variant tag"),
-                                ty: ApiBodyType::StringLiteral { literal: s("Lark") }
-                            },
-                            s("lark1") => ApiBodyInfo {
-                                description: s("Lark1"),
-                                ty: ApiBodyType::String
+                        ty: ApiBodyType::Object {
+                            keys: map! {
+                                s("kind") => ApiBodyInfo {
+                                    description: s("Variant tag"),
+                                    ty: ApiBodyType::StringLiteral { literal: s("Lark") }
+                                },
+                                s("lark1") => ApiBodyInfo {
+                                    description: s("Lark1"),
+                                    ty: ApiBodyType::String
+                                }
                             }
-                        }}
+                        }
                     },
                     ApiBodyInfo {
                         description: s("Other is different"),
-                        ty: ApiBodyType::Object { keys: map!{
-                            s("kind") => ApiBodyInfo {
-                                description: s("Variant tag"),
-                                ty: ApiBodyType::StringLiteral { literal: s("Other") }
-                            },
-                            s("other_prop") => ApiBodyInfo {
-                                description: s(""),
-                                ty: ApiBodyType::Boolean
+                        ty: ApiBodyType::Object {
+                            keys: map! {
+                                s("kind") => ApiBodyInfo {
+                                    description: s("Variant tag"),
+                                    ty: ApiBodyType::StringLiteral { literal: s("Other") }
+                                },
+                                s("other_prop") => ApiBodyInfo {
+                                    description: s(""),
+                                    ty: ApiBodyType::Boolean
+                                }
                             }
-                        }}
+                        }
                     },
                     ApiBodyInfo {
                         description: s("Other comes from here"),
-                        ty: ApiBodyType::Object { keys: map!{
-                            s("kind") => ApiBodyInfo {
-                                description: s("Variant tag"),
-                                ty: ApiBodyType::StringLiteral { literal: s("AnotherOther") }
-                            },
-                            s("other_prop") => ApiBodyInfo {
-                                description: s(""),
-                                ty: ApiBodyType::Boolean
+                        ty: ApiBodyType::Object {
+                            keys: map! {
+                                s("kind") => ApiBodyInfo {
+                                    description: s("Variant tag"),
+                                    ty: ApiBodyType::StringLiteral { literal: s("AnotherOther") }
+                                },
+                                s("other_prop") => ApiBodyInfo {
+                                    description: s(""),
+                                    ty: ApiBodyType::Boolean
+                                }
                             }
-                        }}
+                        }
                     },
                     ApiBodyInfo {
                         description: s("Bar is empty"),
-                        ty: ApiBodyType::Object { keys: map!{
-                            s("kind") => ApiBodyInfo {
-                                description: s("Variant tag"),
-                                ty: ApiBodyType::StringLiteral { literal: s("Bar") }
+                        ty: ApiBodyType::Object {
+                            keys: map! {
+                                s("kind") => ApiBodyInfo {
+                                    description: s("Variant tag"),
+                                    ty: ApiBodyType::StringLiteral { literal: s("Bar") }
+                                }
                             }
-                        }}
+                        }
                     },
                 ]
             }
@@ -154,10 +166,9 @@ fn has_enum_shape() {
         serde_json::json!({ "kind": "AnotherOther", "other_prop": true })
     );
     assert_eq!(
-        Foo::Bar{}.to_json_value(),
+        Foo::Bar {}.to_json_value(),
         serde_json::json!({ "kind": "Bar" })
     );
-
 }
 
 #[test]
@@ -170,27 +181,28 @@ fn has_enum_shape_unit() {
         A,
         /// B help
         B,
-        C
+        C,
     }
 
     let f = Foo::api_body_info();
 
-    assert_eq!(f,
+    assert_eq!(
+        f,
         ApiBodyInfo {
             description: s("Foo help"),
-            ty: ApiBodyType::OneOf { values:
-                vec![
+            ty: ApiBodyType::OneOf {
+                values: vec![
                     ApiBodyInfo {
                         description: s("A help"),
-                        ty: ApiBodyType::StringLiteral{ literal: s("A") }
+                        ty: ApiBodyType::StringLiteral { literal: s("A") }
                     },
                     ApiBodyInfo {
                         description: s("B help"),
-                        ty: ApiBodyType::StringLiteral{ literal: s("B") }
+                        ty: ApiBodyType::StringLiteral { literal: s("B") }
                     },
                     ApiBodyInfo {
                         description: s(""),
-                        ty: ApiBodyType::StringLiteral{ literal: s("C") }
+                        ty: ApiBodyType::StringLiteral { literal: s("C") }
                     },
                 ]
             }
@@ -198,24 +210,13 @@ fn has_enum_shape_unit() {
     );
 
     // Sanity check that serde outputs a format which aligns with expectation:
-    assert_eq!(
-        Foo::A.to_json_value(),
-        serde_json::json!("A")
-    );
-    assert_eq!(
-        Foo::B.to_json_value(),
-        serde_json::json!("B")
-    );
-    assert_eq!(
-        Foo::C.to_json_value(),
-        serde_json::json!("C")
-    );
-
+    assert_eq!(Foo::A.to_json_value(), serde_json::json!("A"));
+    assert_eq!(Foo::B.to_json_value(), serde_json::json!("B"));
+    assert_eq!(Foo::C.to_json_value(), serde_json::json!("C"));
 }
 
 #[test]
 fn delegates_to_inner() {
-
     #[ApiBody]
     #[allow(dead_code)]
     struct Foo(Foo2);
@@ -229,20 +230,23 @@ fn delegates_to_inner() {
     /// Foo3 docs
     struct Foo3 {
         /// Hi!
-        hi: usize
+        hi: usize,
     }
 
     let f = Foo::api_body_info();
 
-    assert_eq!(f,
+    assert_eq!(
+        f,
         ApiBodyInfo {
             description: s("Foo3 docs"),
-            ty: ApiBodyType::Object { keys: map!{
-                s("hi") => ApiBodyInfo {
-                    description: s("Hi!"),
-                    ty: ApiBodyType::Number
+            ty: ApiBodyType::Object {
+                keys: map! {
+                    s("hi") => ApiBodyInfo {
+                        description: s("Hi!"),
+                        ty: ApiBodyType::Number
+                    }
                 }
-            }}
+            }
         }
     );
 
@@ -255,7 +259,6 @@ fn delegates_to_inner() {
 
 #[test]
 fn delegates_to_inner2() {
-
     #[ApiBody]
     #[allow(dead_code)]
     struct Foo(Foo2);
@@ -269,27 +272,29 @@ fn delegates_to_inner2() {
     #[allow(dead_code)]
     struct Foo3 {
         /// Hi!
-        hi: usize
+        hi: usize,
     }
 
     let f = Foo::api_body_info();
 
-    assert_eq!(f,
+    assert_eq!(
+        f,
         ApiBodyInfo {
             description: s("Foo2 docs"),
-            ty: ApiBodyType::Object { keys: map!{
-                s("hi") => ApiBodyInfo {
-                    description: s("Hi!"),
-                    ty: ApiBodyType::Number
+            ty: ApiBodyType::Object {
+                keys: map! {
+                    s("hi") => ApiBodyInfo {
+                        description: s("Hi!"),
+                        ty: ApiBodyType::Number
+                    }
                 }
-            }}
+            }
         }
     )
 }
 
 #[test]
 fn delegates_to_inner3() {
-
     #[ApiBody]
     #[allow(dead_code)]
     /// Foo docs
@@ -303,16 +308,17 @@ fn delegates_to_inner3() {
     #[allow(dead_code)]
     struct Foo3 {
         /// Hi!
-        hi: usize
+        hi: usize,
     }
 
     let f = Foo::api_body_info();
 
-    assert_eq!(f,
+    assert_eq!(
+        f,
         ApiBodyInfo {
             description: s("Foo docs"),
             ty: ApiBodyType::Object {
-                keys: map!{
+                keys: map! {
                     s("hi") => ApiBodyInfo {
                         description: s("Hi!"),
                         ty: ApiBodyType::Number
@@ -325,32 +331,32 @@ fn delegates_to_inner3() {
 
 #[test]
 fn flattens() {
-
     #[ApiBody]
-    #[derive(Debug,PartialEq)]
+    #[derive(Debug, PartialEq)]
     struct Foo {
         /// Hello docs
         hello: usize,
         #[api_body(flatten)]
-        another: Bar
+        another: Bar,
     }
 
     #[ApiBody]
-    #[derive(Debug,PartialEq)]
+    #[derive(Debug, PartialEq)]
     struct Bar {
         /// There docs
         there: bool,
         /// World docs
-        world: String
+        world: String,
     }
 
     let f = Foo::api_body_info();
 
-    assert_eq!(f,
+    assert_eq!(
+        f,
         ApiBodyInfo {
             description: s(""),
             ty: ApiBodyType::Object {
-                keys: map!{
+                keys: map! {
                     s("hello") => ApiBodyInfo {
                         description: s("Hello docs"),
                         ty: ApiBodyType::Number
@@ -370,13 +376,26 @@ fn flattens() {
 
     // Sanity check that serde outputs a format which aligns with expectation:
     assert_eq!(
-        Foo{ hello: 10, another: Bar{ there: true, world: s("w") } }.to_json_value(),
+        Foo {
+            hello: 10,
+            another: Bar {
+                there: true,
+                world: s("w")
+            }
+        }
+        .to_json_value(),
         serde_json::json!({ "hello": 10, "there": true, "world": "w" })
     );
     // ... and check that flattening works the other way around, too:
     assert_eq!(
-        Foo::from_json_value(serde_json::json!({ "hello": 10, "there": true, "world": "w" })).unwrap(),
-        Foo{ hello: 10, another: Bar{ there: true, world: s("w") } },
+        Foo::from_json_value(serde_json::json!({ "hello": 10, "there": true, "world": "w" }))
+            .unwrap(),
+        Foo {
+            hello: 10,
+            another: Bar {
+                there: true,
+                world: s("w")
+            }
+        },
     );
-
 }

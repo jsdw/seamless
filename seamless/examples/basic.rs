@@ -3,15 +3,18 @@
 //! and then pass in `http::Request`s to use the API.
 
 use seamless::{
-    api::{ Api, ApiBody, ApiError },
-    handler::{ body::{ FromJson, Capped, IntoBody }, request::Bytes, response::ToJson },
-    http::{ Request },
+    api::{Api, ApiBody, ApiError},
+    handler::{
+        body::{Capped, FromJson, IntoBody},
+        request::Bytes,
+        response::ToJson,
+    },
+    http::Request,
 };
-use serde_json::{ Value, json };
+use serde_json::{json, Value};
 
 #[tokio::main]
 async fn main() {
- 
     // Instantiate our API:
     //
     let mut api = Api::new();
@@ -25,7 +28,7 @@ async fn main() {
         .description("Reverse an array of numbers")
         // We cap the request body to 8kb (8 * 1024 bytes) by wrapping it in
         // our 'Capped' type:
-        .handler(|body: Capped<FromJson<Vec<usize>>, {8 * 1024}>| {
+        .handler(|body: Capped<FromJson<Vec<usize>>, { 8 * 1024 }>| {
             ToJson(body.into_body().into_iter().rev().collect::<Vec<usize>>())
         });
 
@@ -39,23 +42,27 @@ async fn main() {
         .description("Divide two numbers by each other")
         .handler(|FromJson(body)| divide(body));
 
-
     // Now, we can handle incoming requests. Let's test a couple:
     //
 
     // Division..
     let req = Request::post("/maths/divide")
         .header("content-type", "application/json")
-        .body(Bytes::from_vec(serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap()))
+        .body(Bytes::from_vec(
+            serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap(),
+        ))
         .unwrap();
-    let actual: Value = serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
+    let actual: Value =
+        serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
     let expected = serde_json::to_value(json!({ "a": 20, "b": 10, "result": 2 })).unwrap();
     assert_eq!(actual, expected);
 
     // Division, hitting our error..
     let req = Request::post("/maths/divide")
         .header("content-type", "application/json")
-        .body(Bytes::from_vec(serde_json::to_vec(&BinaryInput { a: 10, b: 0 }).unwrap()))
+        .body(Bytes::from_vec(
+            serde_json::to_vec(&BinaryInput { a: 10, b: 0 }).unwrap(),
+        ))
         .unwrap();
     assert_eq!(
         api.handle(req).await.unwrap_err().unwrap_err(),
@@ -72,10 +79,10 @@ async fn main() {
         .header("content-type", "application/json")
         .body(Bytes::from_vec(Vec::new()))
         .unwrap();
-    let actual: Value =  serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
+    let actual: Value =
+        serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
     let expected = serde_json::to_value(json!({ "status": "Ok" })).unwrap();
     assert_eq!(actual, expected);
-
 }
 
 /// We can use `seamless::ApiError` to easily allow an existing
@@ -85,15 +92,15 @@ async fn main() {
 #[derive(ApiError, Debug, thiserror::Error)]
 enum MathsError {
     #[error("Division by zero")]
-    #[api_error(external, code=400)]
-    DivideByZero
+    #[api_error(external, code = 400)]
+    DivideByZero,
 }
 
 /// Input consisting of two numbers
 #[ApiBody]
 struct BinaryInput {
     a: usize,
-    b: usize
+    b: usize,
 }
 
 /// Output containing the original input and result
@@ -102,11 +109,11 @@ struct BinaryInput {
 struct BinaryOutput {
     a: usize,
     b: usize,
-    result: usize
+    result: usize,
 }
 
 // We can have async handlers that return Results..
-async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>,MathsError> {
+async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>, MathsError> {
     let a = input.a;
     let b = input.b;
     a.checked_div(b)
@@ -117,19 +124,19 @@ async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>,MathsError> {
 /// The API status
 #[ApiBody]
 struct Status {
-    status: StatusValue
+    status: StatusValue,
 }
 
 #[ApiBody]
 enum StatusValue {
     Ok,
-    NotOk
+    NotOk,
 }
 
 // ..or async/sync handlers that return Options..
 fn status() -> Option<Status> {
     Some(Status {
-        status: StatusValue::Ok
+        status: StatusValue::Ok,
     })
 }
 

@@ -1,24 +1,30 @@
-use seamless::{ ApiError };
+use seamless::ApiError;
 
 #[derive(ApiError)]
 #[api_error(internal)]
 enum Foo {
     A,
     #[api_error(external = "Hidden", code = 404)]
-    B { message: String },
+    B {
+        message: String,
+    },
     #[api_error(external)]
     C,
     #[api_error(inner)]
-    Delegated(Bar)
+    Delegated(Bar),
 }
 impl std::fmt::Display for Foo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Foo::A => "a".to_owned(),
-            Foo::B { message } => message.clone(),
-            Foo::C => "c".to_owned(),
-            Foo::Delegated (..) => "DELEGATED".to_owned()
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Foo::A => "a".to_owned(),
+                Foo::B { message } => message.clone(),
+                Foo::C => "c".to_owned(),
+                Foo::Delegated(..) => "DELEGATED".to_owned(),
+            }
+        )
     }
 }
 
@@ -42,7 +48,10 @@ fn test_enum_a() {
 
 #[test]
 fn test_enum_b() {
-    let a: ApiError = Foo::B { message: "Custom".to_owned() }.into();
+    let a: ApiError = Foo::B {
+        message: "Custom".to_owned(),
+    }
+    .into();
     assert_eq!(a.code, 404);
     assert_eq!(a.internal_message, "Custom".to_owned());
     assert_eq!(a.external_message, "Hidden".to_owned());

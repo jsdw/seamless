@@ -1,7 +1,8 @@
 //! This module provides traits and structs that relate to the handler functions
 //! that we can pass to API routes.
-mod param;
+#[allow(clippy::module_inception)]
 mod handler;
+mod param;
 mod to_async;
 
 /// This contains the [`HandlerBody`] trait, which you can implement on a type
@@ -20,11 +21,11 @@ pub mod response;
 /// in if desired.
 pub mod request;
 
-pub use body::{ HandlerBody };
-pub use param::{ HandlerParam };
-pub use response::{ HandlerResponse };
+pub use body::HandlerBody;
+pub use param::HandlerParam;
+pub use response::HandlerResponse;
 
 // This is only ever exposed internally (used inside the api router),
 // so let's not expose it to the world:
-pub (crate) use handler::{ Handler };
-pub use handler::{ IntoHandler };
+pub(crate) use handler::Handler;
+pub use handler::IntoHandler;

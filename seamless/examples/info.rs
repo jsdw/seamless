@@ -5,14 +5,13 @@
 //! structs/enums.
 
 use seamless::{
-    api::{ Api, ApiBody, ApiError },
-    handler::{ body::FromJson, response::ToJson },
+    api::{Api, ApiBody, ApiError},
+    handler::{body::FromJson, response::ToJson},
 };
 use serde_json::json;
 
 #[tokio::main]
 async fn main() {
-
     // Instantiate our API:
     //
     let mut api = Api::new();
@@ -73,7 +72,6 @@ async fn main() {
         }
     ]);
     assert_eq!(serde_json::to_value(info).unwrap(), expected);
-
 }
 
 /// We can use `seamless::ApiError` to easily allow an existing
@@ -83,8 +81,8 @@ async fn main() {
 #[derive(ApiError, Debug, thiserror::Error)]
 enum MathsError {
     #[error("Division by zero")]
-    #[api_error(external, code=400)]
-    DivideByZero
+    #[api_error(external, code = 400)]
+    DivideByZero,
 }
 
 /// Input consisting of two numbers
@@ -93,7 +91,7 @@ struct BinaryInput {
     /// Input 'a'
     a: usize,
     /// Input 'b'
-    b: usize
+    b: usize,
 }
 
 /// Output containing the original input and result
@@ -103,10 +101,10 @@ struct BinaryOutput {
     a: usize,
     b: usize,
     /// The result
-    result: usize
+    result: usize,
 }
 
-async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>,MathsError> {
+async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>, MathsError> {
     let a = input.a;
     let b = input.b;
     a.checked_div(b)

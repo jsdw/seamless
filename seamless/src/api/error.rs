@@ -1,5 +1,5 @@
 /// This represents an API error that is returned from the API.
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ApiError {
     /// What the HTTP status code should be for this error response.
     pub code: u16,
@@ -9,11 +9,10 @@ pub struct ApiError {
     pub external_message: String,
     /// Some optional context which could contain arbitrary information. It's expected that
     /// this could be handed back to API consumers and so shouldn't contain anything sensitive.
-    pub value: Option<serde_json::Value>
+    pub value: Option<serde_json::Value>,
 }
 
 impl ApiError {
-
     // Try to keep this the same as seamless-macros::api_error's version:
     #[doc(hidden)]
     pub const SERVER_ERROR: &'static str = "Internal server error";
@@ -24,7 +23,7 @@ impl ApiError {
             code: 500,
             internal_message: msg.into(),
             external_message: ApiError::SERVER_ERROR.to_owned(),
-            value: None
+            value: None,
         }
     }
 
@@ -34,7 +33,7 @@ impl ApiError {
             code: 404,
             internal_message: "Not found".to_owned(),
             external_message: "Not found".to_owned(),
-            value: None
+            value: None,
         }
     }
 
@@ -45,11 +44,13 @@ impl ApiError {
             code: 403,
             external_message: msg.clone(),
             internal_message: msg,
-            value: None
+            value: None,
         }
     }
 }
 
 impl From<std::convert::Infallible> for ApiError {
-    fn from(_: std::convert::Infallible) -> ApiError { unreachable!() }
+    fn from(_: std::convert::Infallible) -> ApiError {
+        unreachable!()
+    }
 }

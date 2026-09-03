@@ -2,8 +2,8 @@
 //! inject state into handlers.
 
 use seamless::{
-    api::{ Api, ApiError },
-    handler::{ HandlerParam, body::FromJson, request::Bytes, response::ToJson },
+    api::{Api, ApiError},
+    handler::{body::FromJson, request::Bytes, response::ToJson, HandlerParam},
 };
 
 // Something we want to inject into our handler.
@@ -19,8 +19,10 @@ struct State;
 #[seamless::async_trait]
 impl HandlerParam for State {
     type Error = ApiError;
-    async fn handler_param(req: &http::Request<()>) -> Result<Self,Self::Error> {
-        let state: State = req.extensions().get::<State>()
+    async fn handler_param(req: &http::Request<()>) -> Result<Self, Self::Error> {
+        let state: State = req
+            .extensions()
+            .get::<State>()
             .expect("State must be injected into the request")
             .clone();
         Ok(state)
@@ -29,7 +31,6 @@ impl HandlerParam for State {
 
 #[tokio::main]
 async fn main() {
-
     // Instantiate our API:
     //
     let mut api = Api::new();
@@ -39,7 +40,6 @@ async fn main() {
     api.add("echo")
         .description("Echo back the string provided")
         .handler(|_state: State, body: FromJson<String>| ToJson(body.0));
-
 
     // When passing a request into our API, remember to inject `State` so that
     // it's available for our `HandlerParam` trait to extract:
@@ -52,7 +52,6 @@ async fn main() {
 
     // We can now handle the request without issues:
     assert!(api.handle(req).await.is_ok());
-
 }
 
 // Make sure the example is valid when runnign cargo test

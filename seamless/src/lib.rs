@@ -323,15 +323,15 @@ Seamless is designed to make it easy to create simple RPC style JSON APIs that c
 to server without using external tools like OpenAPI.
 
 - Seamless has not been optimised for building RESTful style APIs. However, the [`handler::HandlerBody`] and
-[`handler::HandlerParam`] traits in particular provide a bunch of extensibility.
+  [`handler::HandlerParam`] traits in particular provide a bunch of extensibility.
 - Some of the flexiblity that `Serde` provides for manipulating how types are serialized and deserialized is not
-available. This library takes the approach of 'wrapping' serde using the [`macro@ApiBody`] macro to deliberately restrict
-how you can transform types, ensuring that any transformations allowed are properly supported and lead to the correct
-type information being generated.
+  available. This library takes the approach of 'wrapping' serde using the [`macro@ApiBody`] macro to deliberately restrict
+  how you can transform types, ensuring that any transformations allowed are properly supported and lead to the correct
+  type information being generated.
 */
 
-pub mod handler;
 pub mod api;
+pub mod handler;
 
 // Only exposed for seamless_macros; we point serde here. Doesn't need to be documented
 #[doc(hidden)]
@@ -343,13 +343,7 @@ pub use async_trait::async_trait;
 
 /// A re-export of types from the `http` crate that are useful here.
 pub mod http {
-    pub use http::{ Request, Response, Method };
+    pub use http::{Method, Request, Response};
 }
 
-pub use api::{
-    Api,
-    ApiBody,
-    ApiBodyInfo,
-    ApiBodyType,
-    ApiError
-};
+pub use api::{Api, ApiBody, ApiBodyInfo, ApiBodyType, ApiError};
