@@ -1,3 +1,8 @@
+# 0.13.0
+
+- Upgrade to syn 3.
+- Allow `#[api_error(code = ...)]` and `#[api_error(external = ...)]` to accept arbitrary expressions and not just number/string literals. This gives more flexibility on where those things come from, allowing eg constants to be defined and passed in.
+
 # 0.12.0
 
 - Upgrade to http 1.0.

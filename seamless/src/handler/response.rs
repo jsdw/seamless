@@ -1,4 +1,4 @@
-use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
+use crate::api::{ApiBody, ApiBodyInfo, ApiError};
 use async_trait::async_trait;
 use serde::Serialize;
 
@@ -19,7 +19,7 @@ pub trait HandlerResponse {
 pub struct ToJson<T: ApiBody>(pub T);
 
 #[async_trait]
-impl <T: ApiBody + Serialize + Send> HandlerResponse for ToJson<T> {
+impl<T: ApiBody + Serialize + Send> HandlerResponse for ToJson<T> {
     type ResponseBody = T;
     async fn handler_response(self) -> Result<HttpResponse, ApiError> {
         let body = serde_json::to_vec(&self.0).unwrap();
@@ -31,7 +31,10 @@ impl <T: ApiBody + Serialize + Send> HandlerResponse for ToJson<T> {
     }
 }
 
-impl <T> ApiBody for ToJson<T> where T: ApiBody {
+impl<T> ApiBody for ToJson<T>
+where
+    T: ApiBody,
+{
     fn api_body_info() -> ApiBodyInfo {
         T::api_body_info()
     }
@@ -39,20 +42,20 @@ impl <T> ApiBody for ToJson<T> where T: ApiBody {
 
 // Options are valid HandlerResponse's if their T's are
 #[async_trait]
-impl <T> HandlerResponse for Option<T>
+impl<T> HandlerResponse for Option<T>
 where
-    T: HandlerResponse + Send
+    T: HandlerResponse + Send,
 {
     type ResponseBody = <T as HandlerResponse>::ResponseBody;
     async fn handler_response(self) -> Result<HttpResponse, ApiError> {
-        let res = self.ok_or_else(|| ApiError::path_not_found())?;
-        res.handler_response().await.map_err(|e| e.into())
+        let res = self.ok_or_else(ApiError::path_not_found)?;
+        res.handler_response().await
     }
 }
 
 // Results are valid HandlerResponse's if their T's are, and their E's convert to ApiError
 #[async_trait]
-impl <T, E> HandlerResponse for Result<T,E>
+impl<T, E> HandlerResponse for Result<T, E>
 where
     T: HandlerResponse + Send,
     E: Into<ApiError> + Send + 'static,
@@ -60,7 +63,6 @@ where
     type ResponseBody = <T as HandlerResponse>::ResponseBody;
     async fn handler_response(self) -> Result<HttpResponse, ApiError> {
         let res = self.map_err(|e| e.into())?;
-        res.handler_response().await.map_err(|e| e.into())
+        res.handler_response().await
     }
 }
-

@@ -1,11 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
-use http::{ Request, method::Method };
-use serde::de::DeserializeOwned;
-use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
-use crate::handler::request::{ AsyncReadBody, CappedAsyncRead };
+use crate::api::{ApiBody, ApiBodyInfo, ApiError};
+use crate::handler::request::{AsyncReadBody, CappedAsyncRead};
 use async_trait::async_trait;
 use futures::AsyncReadExt;
+use http::{method::Method, Request};
+use serde::de::DeserializeOwned;
 
 /// This trait is implemented by anything that represents the incoming request type.
 /// Only one argument implementing this can be asked for in a given handler. The type
@@ -17,11 +17,13 @@ pub trait HandlerBody: Sized {
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
-    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self,ApiError>;
+    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError>;
     /// Which HTTP method is required for this Body to be valid. By default, if a body
     /// is present in the handler we'll expect the method to be POST. Implement this function
     /// to override that.
-    fn handler_method() -> Method { Method::POST }
+    fn handler_method() -> Method {
+        Method::POST
+    }
 }
 
 /// A simple trait that makes it a little more ergonomic in some cases to extract the body
@@ -44,61 +46,66 @@ pub trait IntoBody {
 pub struct FromJson<T: ApiBody>(pub T);
 
 #[async_trait]
-impl <T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
-    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self,ApiError> {
-        let content_type = req.headers()
+impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
+    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
+        let content_type = req
+            .headers()
             .get(http::header::CONTENT_TYPE)
             .ok_or_else(content_type_not_json_err)?;
         let content_type_is_json = content_type
             .to_str()
-            .map(|s| s.to_ascii_lowercase() == "application/json")
+            .map(|s| s.eq_ignore_ascii_case("application/json"))
             .unwrap_or(false);
         if !content_type_is_json {
-            return Err(content_type_not_json_err())
+            return Err(content_type_not_json_err());
         }
 
         // Stream our body into a vector of bytes:
         let mut body = vec![];
-        req.into_body().read_to_end(&mut body).await
+        req.into_body()
+            .read_to_end(&mut body)
+            .await
             .map_err(|e| ApiError {
                 code: 400,
                 internal_message: e.to_string(),
                 external_message: e.to_string(),
-                value: None
+                value: None,
             })?;
 
         // Assume JSON and parse:
-        let json = serde_json::from_slice(&body)
-            .map_err(|e| ApiError {
-                code: 400,
-                internal_message: e.to_string(),
-                external_message: e.to_string(),
-                value: None
-            })?;
+        let json = serde_json::from_slice(&body).map_err(|e| ApiError {
+            code: 400,
+            internal_message: e.to_string(),
+            external_message: e.to_string(),
+            value: None,
+        })?;
         Ok(FromJson(json))
     }
 }
 
-impl <T> ApiBody for FromJson<T> where T: ApiBody {
+impl<T> ApiBody for FromJson<T>
+where
+    T: ApiBody,
+{
     fn api_body_info() -> ApiBodyInfo {
         T::api_body_info()
     }
 }
 
-impl <T: ApiBody> Deref for FromJson<T> {
+impl<T: ApiBody> Deref for FromJson<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl <T: ApiBody> DerefMut for FromJson<T> {
+impl<T: ApiBody> DerefMut for FromJson<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl <T: ApiBody> IntoBody for FromJson<T> {
+impl<T: ApiBody> IntoBody for FromJson<T> {
     type Target = T;
     fn into_body(self) -> Self::Target {
         self.0
@@ -110,7 +117,7 @@ fn content_type_not_json_err() -> ApiError {
         code: 415,
         internal_message: "Content-Type must be application/json".to_string(),
         external_message: "Content-Type must be application/json".to_string(),
-        value: None
+        value: None,
     }
 }
 
@@ -121,14 +128,16 @@ pub struct FromBinary(pub Vec<u8>);
 
 #[async_trait]
 impl HandlerBody for FromBinary {
-    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self,ApiError> {
+    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
         let mut body = vec![];
-        req.into_body().read_to_end(&mut body).await
+        req.into_body()
+            .read_to_end(&mut body)
+            .await
             .map_err(|e| ApiError {
                 code: 400,
                 internal_message: e.to_string(),
                 external_message: e.to_string(),
-                value: None
+                value: None,
             })?;
         Ok(FromBinary(body))
     }
@@ -138,7 +147,7 @@ impl ApiBody for FromBinary {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: "Binary data".to_owned(),
-            ty: crate::api::ApiBodyType::Binary
+            ty: crate::api::ApiBodyType::Binary,
         }
     }
 }
@@ -169,15 +178,14 @@ impl IntoBody for FromBinary {
     }
 }
 
-
 /// This wraps anything implementing [`HandlerBody`] and puts a type level cap on the size
 /// that the request body is allowed to be before this is rejected. This works best when the
 /// request body is streamed, as it will stop the streaming once said limit is reached.
 pub struct Capped<T: ApiBody + HandlerBody, const MAX_BYTES: usize>(pub T);
 
 #[async_trait]
-impl <T: ApiBody + HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T, MAX_BYTES> {
-    async fn handler_body<'a>(req: Request<&'a mut dyn AsyncReadBody>) -> Result<Self,ApiError> {
+impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T, MAX_BYTES> {
+    async fn handler_body<'a>(req: Request<&'a mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
         let (parts, body) = req.into_parts();
         let mut body = CappedAsyncRead::<_, MAX_BYTES>::new(body);
         let req = Request::from_parts(parts, &mut body as &mut dyn AsyncReadBody);
@@ -185,26 +193,28 @@ impl <T: ApiBody + HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T
     }
 }
 
-impl <T: ApiBody + HandlerBody, const MAX_BYTES: usize> ApiBody for Capped<T, MAX_BYTES> {
+impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> ApiBody for Capped<T, MAX_BYTES> {
     fn api_body_info() -> ApiBodyInfo {
         T::api_body_info()
     }
 }
 
-impl <T: ApiBody + HandlerBody, const MAX_BYTES: usize> Deref for Capped<T, MAX_BYTES> {
+impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> Deref for Capped<T, MAX_BYTES> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl <T: ApiBody + HandlerBody, const MAX_BYTES: usize> DerefMut for Capped<T, MAX_BYTES> {
+impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> DerefMut for Capped<T, MAX_BYTES> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl <T: ApiBody + HandlerBody + IntoBody, const MAX_BYTES: usize> IntoBody for Capped<T, MAX_BYTES> {
+impl<T: ApiBody + HandlerBody + IntoBody, const MAX_BYTES: usize> IntoBody
+    for Capped<T, MAX_BYTES>
+{
     type Target = T::Target;
     fn into_body(self) -> Self::Target {
         self.0.into_body()

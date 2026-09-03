@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// A representation of some type, including its description and shape.
 /// This is given back for anything which implements the [`trait@crate::ApiBody`] trait,
 /// and is automatically generated if one uses the [`macro@crate::ApiBody`] macro on some type.
-#[derive(Debug,Clone,PartialEq,Eq,Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApiBodyInfo {
     /// A human friendly description of the type. When using the
     /// [`ApiBody`](seamless_macros::ApiBody) macro, this will be automatically
@@ -14,7 +14,7 @@ pub struct ApiBodyInfo {
     /// serializing the type. If you use the [`ApiBody`](seamless_macros::ApiBody)
     /// macro, this is guaranteed to be the case.
     #[serde(rename = "shape")]
-    pub ty: ApiBodyType
+    pub ty: ApiBodyType,
 }
 
 // Primarily for internal use; structs can
@@ -24,12 +24,12 @@ pub struct ApiBodyInfo {
 #[doc(hidden)]
 pub struct ApiBodyStructInfo {
     pub description: String,
-    pub struc: HashMap<String, ApiBodyInfo>
+    pub struc: HashMap<String, ApiBodyInfo>,
 }
 
 /// An enum representing the shape of the JSON that is provided or output from the API.
 /// There is a straightforward mapping from this to TypeScript types.
-#[derive(Debug,Clone,PartialEq,Eq,Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type")]
 pub enum ApiBodyType {
     /// Corresponds to the TypeScript type `string`.
@@ -59,44 +59,44 @@ pub enum ApiBodyType {
     /// `string[]` or `number[]`.
     ArrayOf {
         /// The type of all of the values in the array.
-        value: Box<ApiBodyInfo>
+        value: Box<ApiBodyInfo>,
     },
     /// A fixed length array of values that can be of mixed types, eg
     /// `[string, number, Foo]`.
     TupleOf {
         /// A list of each of the types in this fixed length array.
-        values: Vec<ApiBodyInfo>
+        values: Vec<ApiBodyInfo>,
     },
     /// An object where the keys are strings and the values are all of the same type, eg
     /// `{ [key: string]: Foo }`.
     ObjectOf {
         /// The type of all of the values in the object/map.
-        value: Box<ApiBodyInfo>
+        value: Box<ApiBodyInfo>,
     },
     /// An object whose keys and value types are known at compile time, eg
     /// `{ foo: string, bar: boolean, wibble: Foo }`.
     Object {
         /// The property name and type of each entry in the object.
-        keys: HashMap<String, ApiBodyInfo>
+        keys: HashMap<String, ApiBodyInfo>,
     },
     /// The type is one of several variants, eg
     /// `string | number | Foo`.
     OneOf {
         /// Each of the possible types that this can be.
-        values: Vec<ApiBodyInfo>
+        values: Vec<ApiBodyInfo>,
     },
     /// The type is a string literal with a specific value, eg
     /// `"stringvalue"`.
     StringLiteral {
         /// The exact string literal that we expect.
-        literal: String
+        literal: String,
     },
     /// The type is optional, and need not be provided. It corresponds to either
     /// `{ key?: Foo }` in objects, or `Foo | undefined` in other contexts.
     Optional {
         /// The type that is optional.
-        value: Box<ApiBodyInfo>
-    }
+        value: Box<ApiBodyInfo>,
+    },
 }
 
 /// Any type that implements this trait can be described in terms of [`ApiBodyInfo`], and
@@ -113,27 +113,35 @@ pub trait ApiBody {
 
     /// Serialize the type to JSON.
     fn to_json_vec(&self) -> Vec<u8>
-    where Self: ::serde::Serialize {
+    where
+        Self: ::serde::Serialize,
+    {
         serde_json::to_vec(self)
             .expect("Failed to serialize to JSON due to an invalid manual implementation (1)")
     }
 
     /// Serialize the type to a [`serde_json::Value`].
     fn to_json_value(&self) -> serde_json::Value
-    where Self: ::serde::Serialize {
+    where
+        Self: ::serde::Serialize,
+    {
         serde_json::to_value(self)
             .expect("Failed to serialize to JSON due to an invalid manual implementation (2)")
     }
 
     /// Deserialize from bytes containing a JSON value.
     fn from_json_slice(bytes: &[u8]) -> serde_json::Result<Self>
-    where Self: ::serde::de::DeserializeOwned {
+    where
+        Self: ::serde::de::DeserializeOwned,
+    {
         serde_json::from_slice(bytes)
     }
 
     /// Deserialize from a [`serde_json::Value`].
     fn from_json_value(value: serde_json::Value) -> serde_json::Result<Self>
-    where Self: ::serde::de::DeserializeOwned {
+    where
+        Self: ::serde::de::DeserializeOwned,
+    {
         serde_json::from_value(value)
     }
 }
@@ -145,7 +153,7 @@ pub trait ApiBodyStruct {
     fn api_body_struct_info() -> ApiBodyStructInfo;
 }
 
-impl <T: ApiBodyStruct> ApiBodyStruct for Box<T> {
+impl<T: ApiBodyStruct> ApiBodyStruct for Box<T> {
     fn api_body_struct_info() -> ApiBodyStructInfo {
         T::api_body_struct_info()
     }
@@ -154,34 +162,40 @@ impl <T: ApiBodyStruct> ApiBodyStruct for Box<T> {
 // *** Below are the various built-in implementations of ApiBodyInfo ***
 
 // Boxing:
-impl <T: ApiBody> ApiBody for Box<T> {
+impl<T: ApiBody> ApiBody for Box<T> {
     fn api_body_info() -> ApiBodyInfo {
         T::api_body_info()
     }
 }
 
 // Basic collections:
-impl <T: ApiBody> ApiBody for Vec<T> {
+impl<T: ApiBody> ApiBody for Vec<T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::ArrayOf { value: Box::new(T::api_body_info()) }
+            ty: ApiBodyType::ArrayOf {
+                value: Box::new(T::api_body_info()),
+            },
         }
     }
 }
-impl <T: ApiBody> ApiBody for HashMap<String,T> {
+impl<T: ApiBody> ApiBody for HashMap<String, T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::ObjectOf { value: Box::new(T::api_body_info()) }
+            ty: ApiBodyType::ObjectOf {
+                value: Box::new(T::api_body_info()),
+            },
         }
     }
 }
-impl <T: ApiBody> ApiBody for Option<T> {
+impl<T: ApiBody> ApiBody for Option<T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::Optional { value: Box::new(T::api_body_info()) }
+            ty: ApiBodyType::Optional {
+                value: Box::new(T::api_body_info()),
+            },
         }
     }
 }
@@ -220,11 +234,11 @@ impl_api_body! {
     std::sync::atomic::AtomicBool => ApiBodyType::Boolean,
     String => ApiBodyType::String
 }
-impl <'a> ApiBody for &'a str {
+impl ApiBody for &str {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::String
+            ty: ApiBodyType::String,
         }
     }
 }
@@ -234,7 +248,7 @@ impl ApiBody for () {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::Null
+            ty: ApiBodyType::Null,
         }
     }
 }
@@ -271,16 +285,18 @@ impl ApiBody for serde_json::Value {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::Any
+            ty: ApiBodyType::Any,
         }
     }
 }
 
-impl <T: ApiBody> ApiBody for serde_json::Map<String, T> {
+impl<T: ApiBody> ApiBody for serde_json::Map<String, T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::ObjectOf { value: Box::new(T::api_body_info()) }
+            ty: ApiBodyType::ObjectOf {
+                value: Box::new(T::api_body_info()),
+            },
         }
     }
 }
@@ -290,7 +306,7 @@ impl ApiBody for uuid::Uuid {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: "A 128 bit UUID".to_owned(),
-            ty: ApiBodyType::String
+            ty: ApiBodyType::String,
         }
     }
 }

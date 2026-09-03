@@ -1,24 +1,23 @@
 mod attrs;
 
-use quote::{ quote, quote_spanned };
-use proc_macro2::{ TokenStream as TokenStream2, Span };
 use attrs::ApiErrorAttrs;
+use proc_macro2::{Span, TokenStream as TokenStream2};
+use quote::{quote, quote_spanned};
 
 pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
-
     let struct_name = &s.ident;
     let crate_name = syn::Ident::new("seamless", Span::call_site());
 
     // get top level attrs:
     let attrs = match ApiErrorAttrs::parse(&s.attrs) {
         Ok(attrs) => attrs,
-        Err(err) => return err.to_compile_error()
+        Err(err) => return err.to_compile_error(),
     };
 
     // finalise them since no other attrs to merge with:
     let attrs = match attrs.finalise() {
         Ok(attrs) => attrs,
-        Err(e) => return e.to_compile_error()
+        Err(e) => return e.to_compile_error(),
     };
 
     // For structs with 1 unnamed field, we can delegate to the inner ApiError, else error:
@@ -32,7 +31,7 @@ pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
                     s.0.into()
                 }
             }
-        }
+        };
     }
 
     // We don't know how to handle generics (prolly not needed for errors..):
@@ -40,20 +39,22 @@ pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
         return quote_spanned! {
             s.ident.span() =>
             compile_error!("ApiError: Generics are not currently supported");
-        }
+        };
     }
 
-
-    // What we'll set as the external message:
+    // The external message is either whatever expression we provided to `external = ...`,
+    // with .to_owned() tagged on to make it an owned string, or it's just the display impl
+    // of this error struct.
     let external_msg_tok = if let Some(msg) = attrs.external_message {
-        quote!{ #msg.to_owned() }
+        quote! { #msg.to_owned() }
     } else {
-        quote!{ format!("{}", s) }
+        quote! { format!("{}", s) }
     };
 
-    let code = syn::LitInt::new(&attrs.code.to_string(), Span::call_site());
+    // The error code is whatever expression was given, defaulting to 500.
+    let code = &attrs.code;
 
-    quote!{
+    quote! {
         impl From<#struct_name> for #crate_name::api::ApiError {
             fn from(s: #struct_name) -> #crate_name::api::ApiError {
                 #crate_name::api::ApiError {
@@ -68,39 +69,40 @@ pub fn parse_struct(s: syn::ItemStruct) -> TokenStream2 {
 }
 
 pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
-
     let top_level_attrs = match ApiErrorAttrs::parse(&e.attrs) {
         Ok(attrs) => attrs,
-        Err(err) => return err.to_compile_error()
+        Err(err) => return err.to_compile_error(),
     };
 
     let struct_name = &e.ident;
     let crate_name = syn::Ident::new("seamless", Span::call_site());
 
     if e.variants.is_empty() {
-        return syn::Error::new_spanned(e.ident, "ApiError: Enums without variants are not supported")
-                          .to_compile_error();
+        return syn::Error::new_spanned(
+            e.ident,
+            "ApiError: Enums without variants are not supported",
+        )
+        .to_compile_error();
     }
 
     let mut enum_items = TokenStream2::new();
     for variant in e.variants {
-
         let inner_attrs = match ApiErrorAttrs::parse(&variant.attrs) {
             Ok(attrs) => attrs,
-            Err(err) => return err.to_compile_error()
+            Err(err) => return err.to_compile_error(),
         };
 
         let attrs = match inner_attrs.finalise_with_parent_attrs(&top_level_attrs) {
             Ok(attrs) => attrs,
-            Err(e) => return e.to_compile_error()
+            Err(e) => return e.to_compile_error(),
         };
 
         let ident = &variant.ident;
 
         // rely on the inner implementation if attrs not provided and there is one to rely on:
         if attrs.delegate_to_child {
-            if let Err(e) = one_unnamed_field(&ident, &variant.fields) {
-                return e.to_compile_error()
+            if let Err(e) = one_unnamed_field(ident, &variant.fields) {
+                return e.to_compile_error();
             }
             enum_items.extend(quote! {
                 #struct_name::#ident (inner) => inner.into(),
@@ -108,15 +110,15 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
         }
 
         let full_ident = match variant.fields {
-            syn::Fields::Named(..) => quote!{ #ident {..} },
-            syn::Fields::Unnamed(..) => quote!{ #ident (..) },
-            syn::Fields::Unit => quote!{ #ident }
+            syn::Fields::Named(..) => quote! { #ident {..} },
+            syn::Fields::Unnamed(..) => quote! { #ident (..) },
+            syn::Fields::Unit => quote! { #ident },
         };
-        let code = syn::LitInt::new(&attrs.code.to_string(), Span::call_site());
+        let code = &attrs.code;
         let external_msg_tok = if let Some(msg) = attrs.external_message {
-            quote!{ #msg.to_owned() }
+            quote! { #msg.to_owned() }
         } else {
-            quote!{ format!("{}", s) }
+            quote! { format!("{}", s) }
         };
 
         enum_items.extend(quote! {
@@ -127,7 +129,6 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
                 value: None
             },
         })
-
     }
 
     quote! {
@@ -144,14 +145,20 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
 fn one_unnamed_field(ident: &syn::Ident, fields: &syn::Fields) -> syn::Result<()> {
     let fields: Vec<_> = match fields {
         syn::Fields::Unnamed(fields) => fields.unnamed.iter().collect(),
-        _ => return Err(syn::Error::new_spanned(ident,
-                        "One of '#[api_error(internal)]' or '#[api_error(external)]' or \
-                        '#[api_error(external = \"foo\")]' is required (1)"))
+        _ => {
+            return Err(syn::Error::new_spanned(
+                ident,
+                "One of '#[api_error(internal)]' or '#[api_error(external)]' or \
+                        '#[api_error(external = \"foo\")]' is required (1)",
+            ))
+        }
     };
     if fields.len() != 1 {
-        return Err(syn::Error::new_spanned(ident,
-                   "One of '#[api_error(internal)]' or '#[api_error(external)]' or \
-                   '#[api_error(external = \"foo\")]' is required (2)"))
+        return Err(syn::Error::new_spanned(
+            ident,
+            "One of '#[api_error(internal)]' or '#[api_error(external)]' or \
+                   '#[api_error(external = \"foo\")]' is required (2)",
+        ));
     }
     Ok(())
 }

@@ -1,19 +1,26 @@
 #![doc(hidden)]
-use http::{ Request, Response, method::Method };
-use std::future::Future;
-use std::pin::Pin;
-use crate::api::{ ApiBody, ApiBodyInfo, ApiError };
-use crate::handler::{ HandlerParam, HandlerBody, request::AsyncReadBody };
 use super::response::HandlerResponse;
 use super::to_async::ToAsync;
+use crate::api::{ApiBody, ApiBodyInfo, ApiError};
+use crate::handler::{request::AsyncReadBody, HandlerBody, HandlerParam};
+use http::{method::Method, Request, Response};
+use std::future::Future;
+use std::pin::Pin;
 
 // Internally we resolve the provided handler functions into this:
 #[doc(hidden)]
 pub struct Handler {
     pub method: Method,
-    pub handler: Box<dyn for<'a> Fn(Request<&'a mut dyn AsyncReadBody>) -> Fut<'a, Result<Response<Vec<u8>>,ApiError>> + Send + Sync>,
+    #[allow(clippy::type_complexity)]
+    pub handler: Box<
+        dyn for<'a> Fn(
+                Request<&'a mut dyn AsyncReadBody>,
+            ) -> Fut<'a, Result<Response<Vec<u8>>, ApiError>>
+            + Send
+            + Sync,
+    >,
     pub request_type: ApiBodyInfo,
-    pub response_type: ApiBodyInfo
+    pub response_type: ApiBodyInfo,
 }
 
 // A type alias for an overly complicated boxed Future type that can be sent across threads.
@@ -74,14 +81,14 @@ macro_rules! resolve_for_contexts {
                         Box::pin(async move {
                             let (parts, body) = req.into_parts();
                             let bodyless_req = Request::from_parts(parts, ());
-    
+
                             $(
                             #[allow(non_snake_case)]
                             let $ctx = $ctx::handler_param(&bodyless_req)
                                 .await
                                 .map_err(|e| { let e: ApiError = e.into(); e })?;
                             )*
-    
+
                             let (parts, _) = bodyless_req.into_parts();
                             let req = Request::from_parts(parts, body);
                             let body = BodyParam::handler_body(req).await.map_err(|e| { let e: ApiError = e.into(); e })?;
@@ -91,7 +98,7 @@ macro_rules! resolve_for_contexts {
                                 .handler_response()
                                 .await
                                 .map_err(|e| { let e: ApiError = e.into(); e })?;
-    
+
                             Ok(response)
                         })
                     }),
@@ -128,21 +135,21 @@ macro_rules! resolve_for_contexts {
                             let (parts, _) = req.into_parts();
                             #[allow(unused)]
                             let bodyless_req = Request::from_parts(parts, ());
-    
+
                             $(
                             #[allow(non_snake_case)]
                             let $ctx = $ctx::handler_param(&bodyless_req)
                                 .await
                                 .map_err(|e| { let e: ApiError = e.into(); e })?;
                             )*
-    
+
                             let response = inner_handler($($ctx),*)
                                 .to_async()
                                 .await
                                 .handler_response()
                                 .await
                                 .map_err(|e| { let e: ApiError = e.into(); e })?;
-    
+
                             Ok(response)
                         })
                     }),
