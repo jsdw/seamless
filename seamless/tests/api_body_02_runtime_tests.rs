@@ -400,6 +400,72 @@ fn flattens() {
 }
 
 
+#[test]
+fn raw_identifiers_use_serde_names() {
+    #[ApiBody]
+    #[allow(dead_code, non_camel_case_types)]
+    enum Foo {
+        r#match {
+            r#in: bool,
+        },
+    }
+
+    #[ApiBody]
+    #[allow(dead_code)]
+    struct Bar {
+        r#type: String,
+    }
+
+    assert_eq!(
+        Foo::api_body_info(),
+        ApiBodyInfo {
+            description: s(""),
+            ty: ApiBodyType::OneOf {
+                values: vec![ApiBodyInfo {
+                    description: s(""),
+                    ty: ApiBodyType::Object {
+                        keys: map! {
+                            s("kind") => ApiBodyInfo {
+                                description: s("Variant tag"),
+                                ty: ApiBodyType::StringLiteral { literal: s("match") }
+                            },
+                            s("in") => ApiBodyInfo {
+                                description: s(""),
+                                ty: ApiBodyType::Boolean
+                            }
+                        }
+                    }
+                }]
+            }
+        }
+    );
+
+    assert_eq!(
+        Bar::api_body_info(),
+        ApiBodyInfo {
+            description: s(""),
+            ty: ApiBodyType::Object {
+                keys: map! {
+                    s("type") => ApiBodyInfo {
+                        description: s(""),
+                        ty: ApiBodyType::String
+                    }
+                }
+            }
+        }
+    );
+
+    // Sanity check that serde outputs a format which aligns with expectation:
+    assert_eq!(
+        to_json_value(Foo::r#match { r#in: true }),
+        serde_json::json!({ "kind": "match", "in": true })
+    );
+    assert_eq!(
+        to_json_value(Bar { r#type: s("t") }),
+        serde_json::json!({ "type": "t" })
+    );
+}
+
 fn to_json_value(value: impl serde::Serialize) -> serde_json::Value {
     serde_json::to_value(value)
         .expect("Failed to serialize to JSON due to an invalid manual implementation (2)")

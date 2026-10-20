@@ -5,10 +5,17 @@ use fields::{Field, Fields};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, quote_spanned};
-use syn::{parse::Parser, punctuated::Punctuated};
+use syn::{ext::IdentExt, parse::Parser, punctuated::Punctuated};
 
 static CRATE_NAME_STR: &str = "seamless";
 static VARIANT_DESCRIPTION: &str = "Variant tag";
+
+/// The name serde uses for this identifier on the wire. Raw identifiers
+/// lose their prefix, so `r#type` becomes `"type"`. Only use this for strings
+/// describing the JSON; generated Rust code still needs the original `Ident`.
+fn wire_name(ident: &syn::Ident) -> String {
+    ident.unraw().to_string()
+}
 
 #[derive(Debug)]
 pub struct Attrs {
@@ -63,7 +70,7 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
     let mut seen_nonunit_fields = false;
     for variant in e.variants.iter() {
         let variant_ident = &variant.ident;
-        let variant_ident_string = variant_ident.to_string();
+        let variant_ident_string = wire_name(variant_ident);
         let attr_props = attrs::parse(&variant.attrs)?;
         let variant_docs = attr_props.docs;
 
@@ -126,7 +133,7 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
                 let entries = fields
                     .iter()
                     .map(|f| {
-                        let name = f.field.ident.as_ref().unwrap().to_string();
+                        let name = wire_name(f.field.ident.as_ref().unwrap());
                         let f = quote_field(f);
                         quote! { m.insert(#name.to_owned(), #f); }
                     })
@@ -254,7 +261,7 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
                     }}
                 } else {
                     // Just append the api_body info for the field to the map:
-                    let name = f.field.ident.as_ref().unwrap().to_string();
+                    let name = wire_name(f.field.ident.as_ref().unwrap());
                     let f = quote_field(f);
                     quote!{ m.insert(#name.to_owned(), #f); }
                 }
