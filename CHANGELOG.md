@@ -2,6 +2,7 @@
 
 - **Breaking:** Responses can now be streamed. `Api::handle()` and `HandlerResponse::handler_response()` now produce an `http::Response<seamless::handler::response::Body>` rather than an `http::Response<Vec<u8>>`. A `Body` is either a complete set of bytes (use `Body::as_bytes()` or `Body::into_bytes()` to get at them without streaming) or a stream of `bytes::Bytes` chunks (use `Body::into_stream()` to obtain a `BodyStream`, which implements `futures::Stream`). Code which previously used `res.into_body()` as a `Vec<u8>` can use `res.into_body().into_vec().await` instead, though it's better to pass streaming bodies on to your HTTP framework as streams (see the Axum and Hyper examples).
 - Add a `ToBinary` response type, which responds with arbitrary bytes, optionally streamed from a `futures::Stream` or `futures::AsyncRead`, and which allows the `content-type` and `content-length` headers to be set. The `content-length` is set automatically when the body is already in memory.
+- `ToJson` no longer panics if the value fails to serialize (eg a map with non-string keys, or a custom `Serialize` impl that errors). A 500 `ApiError` is returned instead, with the serialization error in its `internal_message`.
 
 # 0.13.0
 

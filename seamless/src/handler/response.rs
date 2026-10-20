@@ -221,12 +221,13 @@ pub struct ToJson<T: ApiBody>(pub T);
 impl<T: ApiBody + Serialize + Send> HandlerResponse for ToJson<T> {
     type ResponseBody = T;
     async fn handler_response(self) -> Result<HttpResponse, ApiError> {
-        let body = serde_json::to_vec(&self.0).unwrap();
-        let res = http::Response::builder()
+        let body = serde_json::to_vec(&self.0).map_err(|e| {
+            ApiError::server_error(format!("Could not serialize response to JSON: {e}"))
+        })?;
+        http::Response::builder()
             .header("content-type", "application/json")
             .body(Body::from(body))
-            .unwrap();
-        Ok(res)
+            .map_err(|e| ApiError::server_error(format!("Could not build JSON response: {e}")))
     }
 }
 
@@ -341,12 +342,8 @@ impl HandlerResponse for ToBinary {
         if let Some(len) = self.content_length {
             res = res.header("content-length", len);
         }
-        res.body(self.body).map_err(|e| ApiError {
-            code: 500,
-            internal_message: format!("Could not build binary response: {e}"),
-            external_message: "Internal server error".to_owned(),
-            value: None,
-        })
+        res.body(self.body)
+            .map_err(|e| ApiError::server_error(format!("Could not build binary response: {e}")))
     }
 }
 
@@ -387,6 +384,29 @@ where
 #[cfg(test)]
 mod test_body {
     use super::*;
+
+    #[tokio::test]
+    async fn to_json_serialize_error_is_500() {
+        struct Bad;
+        impl Serialize for Bad {
+            fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom("nope"))
+            }
+        }
+        impl ApiBody for Bad {
+            fn api_body_info() -> ApiBodyInfo {
+                <String as ApiBody>::api_body_info()
+            }
+        }
+
+        let err = ToJson(Bad)
+            .handler_response()
+            .await
+            .expect_err("serialization failure should be an error, not a panic");
+        assert_eq!(err.code, 500);
+        assert_eq!(err.external_message, ApiError::SERVER_ERROR);
+        assert!(err.internal_message.contains("nope"));
+    }
 
     #[tokio::test]
     async fn full_body_is_bytes() {
