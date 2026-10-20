@@ -52,7 +52,7 @@ impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
             .ok_or_else(content_type_not_json_err)?;
         let content_type_is_json = content_type
             .to_str()
-            .map(|s| s.eq_ignore_ascii_case("application/json"))
+            .map(is_json_content_type)
             .unwrap_or(false);
         if !content_type_is_json {
             return Err(content_type_not_json_err());
@@ -108,6 +108,13 @@ impl<T: ApiBody> IntoBody for FromJson<T> {
     fn into_body(self) -> Self::Target {
         self.0
     }
+}
+
+/// True if a Content-Type header value names application/json,
+/// ignoring parameters such as `; charset=utf-8`.
+fn is_json_content_type(value: &str) -> bool {
+    let media_type = value.split(';').next().unwrap_or("").trim();
+    media_type.eq_ignore_ascii_case("application/json")
 }
 
 fn content_type_not_json_err() -> ApiError {
@@ -214,5 +221,21 @@ impl<T: ApiBody + HandlerBody + IntoBody, const MAX_BYTES: usize> IntoBody
     type Target = T::Target;
     fn into_body(self) -> Self::Target {
         self.0.into_body()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_json_content_type;
+
+    #[test]
+    fn json_content_type_matching() {
+        assert!(is_json_content_type("application/json"));
+        assert!(is_json_content_type("Application/JSON"));
+        assert!(is_json_content_type("application/json; charset=utf-8"));
+        assert!(is_json_content_type("application/json ; charset=UTF-8"));
+        assert!(!is_json_content_type("text/plain"));
+        assert!(!is_json_content_type("application/jsonx"));
+        assert!(!is_json_content_type(""));
     }
 }
