@@ -40,8 +40,11 @@ impl Api {
     /// the path "hi" is added, then an incoming [`http::Request`] with the path
     /// `"/foo/bar/hi"` will match it.
     pub fn new_with_base_path<S: Into<String>>(base_path: S) -> Api {
+        // Store without leading or trailing slashes so that it's ready to
+        // be matched against request paths in `handle`.
+        let base_path = base_path.into().trim_matches('/').to_owned();
         Api {
-            base_path: base_path.into(),
+            base_path,
             routes: HashMap::new(),
         }
     }
@@ -103,10 +106,9 @@ impl Api {
         &self,
         req: Request<Body>,
     ) -> Result<Response<ResponseBody>, RouteError<Body, ApiError>> {
-        let base_path = &self.base_path.trim_start_matches('/');
         let req_path = req.uri().path().trim_start_matches('/');
 
-        if let Some(req_path_tail) = req_path.strip_prefix(base_path) {
+        if let Some(req_path_tail) = strip_path_prefix(req_path, &self.base_path) {
             // Ensure that the method and path suffix lines up as expected:
             let req_method = req.method().into();
             let req_path_tail = req_path_tail
@@ -146,6 +148,22 @@ impl Api {
         }
         info.sort_by(|a, b| a.name.cmp(&b.name));
         info
+    }
+}
+
+/// Strip `prefix` from the start of `path`, but only if it matches whole path
+/// segments. Neither argument should have a leading slash, and `prefix` should
+/// have no trailing slash. For example, with a prefix of `"api"`, the paths
+/// `"api"` and `"api/foo"` match, but `"apiv2/foo"` does not.
+fn strip_path_prefix<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+    if prefix.is_empty() {
+        return Some(path);
+    }
+    let tail = path.strip_prefix(prefix)?;
+    if tail.is_empty() || tail.starts_with('/') {
+        Some(tail)
+    } else {
+        None
     }
 }
 
