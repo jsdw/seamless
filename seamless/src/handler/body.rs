@@ -17,12 +17,11 @@ pub trait HandlerBody: Sized {
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
     fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> impl Future<Output = Result<Self, ApiError>> + Send;
-    /// Which HTTP method is required for this Body to be valid. By default, if a body
-    /// is present in the handler we'll expect the method to be POST. Implement this function
-    /// to override that.
-    fn handler_method() -> Method {
-        Method::POST
-    }
+
+    /// Which HTTP method is required for this Body to be valid. The built-in body types
+    /// ([`FromJson`] and [`FromBinary`]) expect POST, and wrapper types such as [`Capped`]
+    /// forward the method of the type they wrap.
+    fn handler_method() -> Method;
 }
 
 /// A simple trait that makes it a little more ergonomic in some cases to extract the body
@@ -78,6 +77,10 @@ impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
             value: None,
         })?;
         Ok(FromJson(json))
+    }
+
+    fn handler_method() -> Method {
+        Method::POST
     }
 }
 
@@ -145,6 +148,10 @@ impl HandlerBody for FromBinary {
             })?;
         Ok(FromBinary(body))
     }
+
+    fn handler_method() -> Method {
+        Method::POST
+    }
 }
 
 impl ApiBody for FromBinary {
@@ -194,6 +201,10 @@ impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T,
         let req = Request::from_parts(parts, &mut body as &mut dyn AsyncReadBody);
         T::handler_body(req).await.map(|res| Capped(res))
     }
+
+    fn handler_method() -> Method {
+        T::handler_method()
+    }
 }
 
 impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> ApiBody for Capped<T, MAX_BYTES> {
@@ -226,7 +237,32 @@ impl<T: ApiBody + HandlerBody + IntoBody, const MAX_BYTES: usize> IntoBody
 
 #[cfg(test)]
 mod tests {
-    use super::is_json_content_type;
+    use super::*;
+
+    struct PutBody;
+
+    impl HandlerBody for PutBody {
+        async fn handler_body(_req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
+            Ok(PutBody)
+        }
+        fn handler_method() -> Method {
+            Method::PUT
+        }
+    }
+
+    impl ApiBody for PutBody {
+        fn api_body_info() -> ApiBodyInfo {
+            FromBinary::api_body_info()
+        }
+    }
+
+    #[test]
+    fn capped_forwards_handler_method() {
+        assert_eq!(PutBody::handler_method(), Method::PUT);
+        assert_eq!(<Capped<PutBody, 1024> as HandlerBody>::handler_method(), Method::PUT);
+        assert_eq!(<Capped<FromBinary, 1024> as HandlerBody>::handler_method(), Method::POST);
+        assert_eq!(<Capped<FromJson<String>, 1024> as HandlerBody>::handler_method(), Method::POST);
+    }
 
     #[test]
     fn json_content_type_matching() {
