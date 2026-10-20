@@ -1,29 +1,26 @@
 #![warn(missing_docs)]
 /*!
-This library aims to provide an easy-to-use and extensible approach to declaring API routes, and will automatically
-keep track of various information surrounding requests and responses so that detailed route information (including type
-information) can be generated based on the current state of the API.
+Seamless provides a way to declare a simple RPC style HTTP API, and from this declaration can hand back enough
+information that we can generate a type safe HTTP client for interacting with it.
 
-This library is fully async, but totally independent from any particular async implementation (you don't even need to
-toggle any feature flags).
+Seamless supports async handlers and streaming HTTP requests, but is entirely HTTP framework and async framework
+agnostic: it can be wired in to your frameworks of choice. For instance, you could use seamless to handle the
+API routes in an Axum app and use normal Axum routes to serve other content alongside this API.
 
-Using Seamless, we can write our API in pure Rust, and from that generate a TypeScript based API client (or just the types,
-or just documentation) based on the current state of the API. This allows us to achieve type safe communication between the
-API and TypeScript-like clients without relying on external specifications like OpenAPI.
+# How does it work?
 
-The typical steps for using this library are:
+Each API route that you wish to create exists at some path, and is given a handler function which can expect
+a specific shape of request body, and will return a specific shape of response, or else an error if things go wrong.
 
-- Annotate your input and output types for these routes with the [`macro@ApiBody`] macro.
-- Derive [`macro@ApiError`] (or manually implement `Into<ApiError>`) on any errors you wish to emit.
-- Declare each of your API routes using this library. API handlers can just ask for whatever they need as a
-  function parameter, including arbitrary state or information based on the incoming request (you decide).
-- Once the API routes are declared, use [`Api::info()`] to obtain enough information about the API to
-  generate fully type safe client code (the information is optimised towards generating TypeScript types/code).
-- Integrate this API with something like `warp` or `rocket` so that your `seamless` API routes can live alongside
-  everything else that you'd like to serve (see the examples for how this can be done).
+The expected body types, response types and any errors that are used must implement the [`crate::ApiBody`] and
+[`crate::ApiError`] traits. These traits can be derived via the provided macros, and under the hood will:
+- Implement the [`serde::Serialize`] and [`serde::Deserialize`] traits so that we can receive and respond with
+  values of the given types.
+- Implement the [`crate::ApiBody`] or [`crate::ApiError`] traits so that we know the shape of the incoming and
+  outgoing types, and how any given error should be presented to the client and with what status code.
 
-Have a look at the examples in the `examples` directory to get a proper feel for how this library can be used, or
-keep reading!
+See the `seamless/seamless/examples` folder in the crate repository for a working example demonstrating how to use
+seamless with both Hyper and Axum, as well as a couple of mroe basic examples.
 
 # A Basic Example
 
@@ -37,17 +34,15 @@ use seamless::{
     handler::{ body::FromJson, request::Bytes, response::ToJson }
 };
 
-// The API relies on types that have been annotated with `ApiBody` (request and response
-// types) or `ApiError` (for any errors we might give back). These annotations do some
-// reflection to allow us to get information about the shape of the type and doc comments
-// added to it, as well as ensuring that they can be Serialized/Deserialized.
-
+// This is an input to one of our API routes. We annotate it with the ApiBody
+// macro so that it can be worked with by seamless as a request or response body.
 #[ApiBody]
 struct DivisionInput {
     a: usize,
     b: usize
 }
 
+// We do the same for the type we expect to hand back in a successful response
 #[ApiBody]
 #[derive(PartialEq)]
 struct DivisionOutput {
@@ -56,9 +51,10 @@ struct DivisionOutput {
     result: usize
 }
 
-// Any errors that we return must implement `Into<ApiError>`, Display and Debug. We can derive
-// `ApiError` to automate  this for us. Here we use `thiserror` to derive the Display impl
-// for us. See the documentation on the `ApiError` macro for more info.
+// If we'd like to return a specific error from one of our API routes, we annotate it
+// with ApiError, as well as expecting it to be displayable. This allows seamless to
+// set the correct HTTP status code given the error returned, and return them in a
+// consistent way.
 #[derive(ApiError, Debug, thiserror::Error, PartialEq)]
 enum MathsError {
     #[error("Division by zero")]
@@ -68,9 +64,10 @@ enum MathsError {
 
 let mut api = Api::new();
 
-// We add routes to our new API like so. The handler functions would often be defined
-// separately and called from this handler. Handler functions can be async or sync, and can
-// return any valid handler::HandlerResponse.
+// Now, let's define some routes for our API. Handler functions can be async or sync,
+// and can return any valid handler::HandlerResponse. Here to use `ToJson` to return
+// JSON responses, and in one case return a Result which is either the error we defined
+// above, or the response type we defined above.
 api.add("/echo")
     .description("Echoes back a JSON string")
     .handler(|body: FromJson<String>| ToJson(body.0));
@@ -91,8 +88,7 @@ api.add("/maths.divide")
 
 // Once we've added routes to the `api`, we use it by sending `http::Request`s to it.
 // Since we're expecting JSON to be provided, we need to remember to set the correct
-// content-type:
-
+// content-type so that our FromJson input tries to decode it as valid JSON.
 let req = Request::post("/maths.divide")
     .header("content-type", "application/json")
     .body(Bytes::from_vec(serde_json::to_vec(&DivisionInput { a: 20, b: 10 }).unwrap()))
@@ -108,7 +104,7 @@ assert_eq!(
 
 Most real life use cases will require some sort of state to be accessible inside a handler.
 
-This library follows an approach a little similar to `Rocket`. Any type that implements the
+This library follows an approach a little similar to `Axum`. Any type that implements the
 [`handler::HandlerParam`] trait can be passed into handler functions. Using this trait, you can
 inspect the request to do things like obtain user information from a session ID, or you can pull
 state out of the `Request` object that was placed there prior to it being handed to this library.
@@ -128,12 +124,11 @@ use seamless::{
 # async fn divide(input: BinaryInput) -> Option<BinaryOutput> { Some(BinaryOutput {}) }
 # tokio::runtime::Runtime::new().unwrap().block_on(async {
 
-// Something we want to inject into our handler.
+// Some example state we want to inject into our handler.
 #[derive(Clone)]
-struct State;
+struct State { value: usize };
 
-// Teach the library how to get hold of State when asked for it.
-#[seamless::async_trait]
+// Teach the library how to get hold of our "State" value when asked for it.
 impl HandlerParam for State {
     type Error = ApiError;
     async fn handler_param(req: &http::Request<()>) -> Result<Self,Self::Error> {
@@ -146,24 +141,26 @@ impl HandlerParam for State {
 
 let mut api = Api::new();
 
-// Note that we can now ask for `State` as a parameter to the handler. State
-// MUST come before our `Json<_>` parameter. `HandlerParam` impls are evaluated
-// in the order that arguments appear in the parameter list.
+// We can now ask for `State` as a parameter to the handler, as well as the HTTP body,
+// which we extract as JSON using `FromJson`. We must always ask for the body last.
 api.add("/echo")
-    .description("Echoes back a JSON string")
-    .handler(|_state: State, body: FromJson<String>| ToJson(body.0));
+    .description("Echoes back a JSON string, plus our state value")
+    .handler(|state: State, body: FromJson<String>| ToJson(format!("{}, {}", body.0, state.value)));
 
+// Now, to demo it, we build an HTTP request to send to this route.
 let mut req = http::Request::post("/echo")
     .header("content-type", "application/json")
     .body(Bytes::from_vec(serde_json::to_vec("hello").unwrap()))
     .unwrap();
 
 // When passing a request into our API, remember to inject `State` too so that
-// it's available for our `HandlerParam` trait to extract:
-req.extensions_mut().insert(State);
+// it's available for our `HandlerParam` trait to extract when asked for.
+req.extensions_mut().insert(State { value: 123 });
 
-// We can now handle the request without issues:
-assert!(api.handle(req).await.is_ok());
+// We can now handle a request that is expecting our `State` to be available.
+// The response comes back as a JSON string.
+let res = api.handle(req).await.unwrap().into_body();
+assert_eq!(res, "\"hello, 123\"".as_bytes());
 # })
 ```
 
@@ -338,8 +335,6 @@ pub mod handler;
 pub mod serde {
     pub use serde::*;
 }
-
-pub use async_trait::async_trait;
 
 /// A re-export of types from the `http` crate that are useful here.
 pub mod http {

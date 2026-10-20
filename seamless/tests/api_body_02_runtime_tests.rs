@@ -50,11 +50,10 @@ fn has_struct_shape() {
 
     // Sanity check that serde outputs a format which aligns with expectation:
     assert_eq!(
-        Foo {
+        to_json_value(Foo {
             prop: 2,
             another_prop: true
-        }
-        .to_json_value(),
+        }),
         serde_json::json!({ "prop": 2, "another_prop": true })
     )
 }
@@ -154,19 +153,19 @@ fn has_enum_shape() {
 
     // Sanity check that serde outputs a format which aligns with expectation:
     assert_eq!(
-        Foo::Lark { lark1: s("hi") }.to_json_value(),
+        to_json_value(Foo::Lark { lark1: s("hi") }),
         serde_json::json!({ "kind": "Lark", "lark1": "hi" })
     );
     assert_eq!(
-        Foo::Other(Other { other_prop: true }).to_json_value(),
+        to_json_value(Foo::Other(Other { other_prop: true })),
         serde_json::json!({ "kind": "Other", "other_prop": true })
     );
     assert_eq!(
-        Foo::AnotherOther(Other { other_prop: true }).to_json_value(),
+        to_json_value(Foo::AnotherOther(Other { other_prop: true })),
         serde_json::json!({ "kind": "AnotherOther", "other_prop": true })
     );
     assert_eq!(
-        Foo::Bar {}.to_json_value(),
+        to_json_value(Foo::Bar {}),
         serde_json::json!({ "kind": "Bar" })
     );
 }
@@ -210,9 +209,9 @@ fn has_enum_shape_unit() {
     );
 
     // Sanity check that serde outputs a format which aligns with expectation:
-    assert_eq!(Foo::A.to_json_value(), serde_json::json!("A"));
-    assert_eq!(Foo::B.to_json_value(), serde_json::json!("B"));
-    assert_eq!(Foo::C.to_json_value(), serde_json::json!("C"));
+    assert_eq!(to_json_value(Foo::A), serde_json::json!("A"));
+    assert_eq!(to_json_value(Foo::B), serde_json::json!("B"));
+    assert_eq!(to_json_value(Foo::C), serde_json::json!("C"));
 }
 
 #[test]
@@ -252,7 +251,7 @@ fn delegates_to_inner() {
 
     // Sanity check that serde outputs a format which aligns with expectation:
     assert_eq!(
-        Foo(Foo2(Foo3 { hi: 2 })).to_json_value(),
+        to_json_value(Foo(Foo2(Foo3 { hi: 2 }))),
         serde_json::json!({ "hi": 2 })
     );
 }
@@ -376,20 +375,20 @@ fn flattens() {
 
     // Sanity check that serde outputs a format which aligns with expectation:
     assert_eq!(
-        Foo {
+        to_json_value(Foo {
             hello: 10,
             another: Bar {
                 there: true,
                 world: s("w")
             }
-        }
-        .to_json_value(),
+        }),
         serde_json::json!({ "hello": 10, "there": true, "world": "w" })
     );
     // ... and check that flattening works the other way around, too:
     assert_eq!(
-        Foo::from_json_value(serde_json::json!({ "hello": 10, "there": true, "world": "w" }))
-            .unwrap(),
+        serde_json::from_value::<Foo>(
+            serde_json::json!({ "hello": 10, "there": true, "world": "w" })
+        ).unwrap(),
         Foo {
             hello: 10,
             another: Bar {
@@ -398,4 +397,10 @@ fn flattens() {
             }
         },
     );
+}
+
+
+fn to_json_value(value: impl serde::Serialize) -> serde_json::Value {
+    serde_json::to_value(value)
+        .expect("Failed to serialize to JSON due to an invalid manual implementation (2)")
 }

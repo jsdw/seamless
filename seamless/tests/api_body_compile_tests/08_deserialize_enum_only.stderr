@@ -1,8 +1,10 @@
 error[E0277]: the trait bound `Foo: serde::Serialize` is not satisfied
-  --> tests/api_body_compile_tests/08_deserialize_enum_only.rs:10:31
+  --> tests/api_body_compile_tests/08_deserialize_enum_only.rs:10:35
    |
-10 |     let f = Foo::Bar{ n: 10 }.to_json_value();
-   |                               ^^^^^^^^^^^^^ unsatisfied trait bound
+10 |     let f = serde_json::to_string(&Foo::Bar{ n: 10 });
+   |             --------------------- ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |             |
+   |             required by a bound introduced by this call
    |
 help: the trait `seamless::serde::Serialize` is not implemented for `Foo`
   --> tests/api_body_compile_tests/08_deserialize_enum_only.rs:4:1
@@ -21,10 +23,11 @@ help: the trait `seamless::serde::Serialize` is not implemented for `Foo`
              (T0, T1, T2, T3)
              (T0, T1, T2, T3, T4)
            and $N others
-note: required by a bound in `to_json_value`
-  --> src/api/info.rs
+note: required by a bound in `serde_json::to_string`
+  --> $CARGO/serde_json-$VERSION/src/ser.rs
    |
-   |     fn to_json_value(&self) -> serde_json::Value
-   |        ------------- required by a bound in this associated function
-   |     where Self: ::serde::Serialize {
-   |                 ^^^^^^^^^^^^^^^^^^ required by this bound in `ApiBody::to_json_value`
+   | pub fn to_string<T>(value: &T) -> Result<String>
+   |        --------- required by a bound in this function
+   | where
+   |     T: ?Sized + Serialize,
+   |                 ^^^^^^^^^ required by this bound in `to_string`

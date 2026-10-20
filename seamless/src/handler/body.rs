@@ -2,8 +2,8 @@ use std::ops::{Deref, DerefMut};
 
 use crate::api::{ApiBody, ApiBodyInfo, ApiError};
 use crate::handler::request::{AsyncReadBody, CappedAsyncRead};
-use async_trait::async_trait;
 use futures::AsyncReadExt;
+use std::future::Future;
 use http::{method::Method, Request};
 use serde::de::DeserializeOwned;
 
@@ -11,13 +11,12 @@ use serde::de::DeserializeOwned;
 /// Only one argument implementing this can be asked for in a given handler. The type
 /// that implements this is used to determine the input type expected by the handler
 /// for the sake of generating API information.
-#[async_trait]
 pub trait HandlerBody: Sized {
     /// Given a request containing arbitrary bytes, this function needs to return an
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
-    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError>;
+    fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> impl Future<Output = Result<Self, ApiError>> + Send;
     /// Which HTTP method is required for this Body to be valid. By default, if a body
     /// is present in the handler we'll expect the method to be POST. Implement this function
     /// to override that.
@@ -45,7 +44,6 @@ pub trait IntoBody {
 /// Deserialize option.
 pub struct FromJson<T: ApiBody>(pub T);
 
-#[async_trait]
 impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
     async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
         let content_type = req
@@ -126,7 +124,6 @@ fn content_type_not_json_err() -> ApiError {
 /// we'll make that data available within the handler as bytes.
 pub struct FromBinary(pub Vec<u8>);
 
-#[async_trait]
 impl HandlerBody for FromBinary {
     async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
         let mut body = vec![];
@@ -183,7 +180,6 @@ impl IntoBody for FromBinary {
 /// request body is streamed, as it will stop the streaming once said limit is reached.
 pub struct Capped<T: ApiBody + HandlerBody, const MAX_BYTES: usize>(pub T);
 
-#[async_trait]
 impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T, MAX_BYTES> {
     async fn handler_body<'a>(req: Request<&'a mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
         let (parts, body) = req.into_parts();

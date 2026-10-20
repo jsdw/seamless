@@ -1,24 +1,22 @@
 use crate::api::{ApiBody, ApiBodyInfo, ApiError};
-use async_trait::async_trait;
 use serde::Serialize;
+use std::future::Future;
 
 type HttpResponse = http::Response<Vec<u8>>;
 
 /// Anything that you'd like to be able to return from a handler function must implement
 /// this trait, which decides how to take the result of a handler function and encode it
 /// into an [`http::Response<Vec<u8>>`], or failing to do so, returns an [`struct@ApiError`].
-#[async_trait]
 pub trait HandlerResponse {
     /// The type that we should look at to work out what the response body will look like.
     type ResponseBody: ApiBody;
     /// This describes how the type can be converted into an `http::Response`.
-    async fn handler_response(self) -> Result<HttpResponse, ApiError>;
+    fn handler_response(self) -> impl Future<Output = Result<HttpResponse, ApiError>> + Send;
 }
 
 /// Wrap responses in this to return them as JSON
 pub struct ToJson<T: ApiBody>(pub T);
 
-#[async_trait]
 impl<T: ApiBody + Serialize + Send> HandlerResponse for ToJson<T> {
     type ResponseBody = T;
     async fn handler_response(self) -> Result<HttpResponse, ApiError> {
@@ -41,7 +39,6 @@ where
 }
 
 // Options are valid HandlerResponse's if their T's are
-#[async_trait]
 impl<T> HandlerResponse for Option<T>
 where
     T: HandlerResponse + Send,
@@ -54,7 +51,6 @@ where
 }
 
 // Results are valid HandlerResponse's if their T's are, and their E's convert to ApiError
-#[async_trait]
 impl<T, E> HandlerResponse for Result<T, E>
 where
     T: HandlerResponse + Send,

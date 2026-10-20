@@ -16,7 +16,6 @@ struct State;
 // This can inspect the request headers and path as well so that we
 // can do things like load in a user based on a session cookie and complain
 // with an ApiError if the user is not found.
-#[seamless::async_trait]
 impl HandlerParam for State {
     type Error = ApiError;
     async fn handler_param(req: &http::Request<()>) -> Result<Self, Self::Error> {

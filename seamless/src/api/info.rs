@@ -110,44 +110,12 @@ pub enum ApiBodyType {
 pub trait ApiBody {
     /// This returns information about the shape of the type and description of parts of it.
     fn api_body_info() -> ApiBodyInfo;
-
-    /// Serialize the type to JSON.
-    fn to_json_vec(&self) -> Vec<u8>
-    where
-        Self: ::serde::Serialize,
-    {
-        serde_json::to_vec(self)
-            .expect("Failed to serialize to JSON due to an invalid manual implementation (1)")
-    }
-
-    /// Serialize the type to a [`serde_json::Value`].
-    fn to_json_value(&self) -> serde_json::Value
-    where
-        Self: ::serde::Serialize,
-    {
-        serde_json::to_value(self)
-            .expect("Failed to serialize to JSON due to an invalid manual implementation (2)")
-    }
-
-    /// Deserialize from bytes containing a JSON value.
-    fn from_json_slice(bytes: &[u8]) -> serde_json::Result<Self>
-    where
-        Self: ::serde::de::DeserializeOwned,
-    {
-        serde_json::from_slice(bytes)
-    }
-
-    /// Deserialize from a [`serde_json::Value`].
-    fn from_json_value(value: serde_json::Value) -> serde_json::Result<Self>
-    where
-        Self: ::serde::de::DeserializeOwned,
-    {
-        serde_json::from_value(value)
-    }
 }
 
-/// This trait is implemented for all struct types, so that we know, at compile time,
-/// whether we're working with a struct type that can be flattened or not.
+/// The ApiBody macro implements this trait for all struct types, so that we can properly
+/// flatten enums or newtypes containing a single struct type.
+///
+/// This is not meant to be used by hand.
 #[doc(hidden)]
 pub trait ApiBodyStruct {
     fn api_body_struct_info() -> ApiBodyStructInfo;

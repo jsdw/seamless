@@ -13,16 +13,16 @@ enum Foo2 {
 
 fn main() {
     // both compile fine:
-    let _f: Foo = ApiBody::from_json_value(json!({
+    let _f: Foo = serde_json::from_value(json!({
         "kind": "Bar",
         "n": 10
     })).unwrap();
-    let _f = Foo::Bar{ n: 10 }.to_json_value();
+    let _f = serde_json::to_string(&Foo::Bar{ n: 10 });
 
     // both compile fine:
-    let _f: Foo2 = ApiBody::from_json_value(json!({
+    let _f: Foo2 = serde_json::from_value(json!({
         "kind": "Bar",
         "n": 10
     })).unwrap();
-    let _f = Foo2::Bar{ n: 10 }.to_json_value();
+    let _f = serde_json::to_string(&Foo2::Bar{ n: 10 });
 }

@@ -8,7 +8,7 @@ enum Foo {
 
 fn main() {
     // This should fail to compile because deserialize not implemented
-    let f: Foo = ApiBody::from_json_value(json!({
+    let f: Foo = serde_json::from_value(json!({
         "kind": "Bar",
         "n": 10
     })).unwrap();
