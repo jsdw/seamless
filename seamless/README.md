@@ -99,7 +99,7 @@ let req = Request::post("/maths.divide")
     .body(Bytes::from_vec(serde_json::to_vec(&DivisionInput { a: 20, b: 10 }).unwrap()))
     .unwrap();
 assert_eq!(
-    api.handle(req).await.unwrap().into_body(),
+    api.handle(req).await.unwrap().into_body().into_vec().await.unwrap(),
     serde_json::to_vec(&DivisionOutput{ a: 20, b: 10, result: 2 }).unwrap()
 );
 ```

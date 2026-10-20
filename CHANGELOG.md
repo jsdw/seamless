@@ -1,3 +1,8 @@
+# Unreleased
+
+- **Breaking:** Responses can now be streamed. `Api::handle()` and `HandlerResponse::handler_response()` now produce an `http::Response<seamless::handler::response::Body>` rather than an `http::Response<Vec<u8>>`. A `Body` is either a complete set of bytes (use `Body::into_full()` to get at them without streaming) or a `futures::Stream` of `bytes::Bytes` chunks. Code which previously used `res.into_body()` as a `Vec<u8>` can use `res.into_body().into_vec().await` instead, though it's better to pass streaming bodies on to your HTTP framework as streams (see the Axum and Hyper examples).
+- Add a `ToBinary` response type, which responds with arbitrary bytes, optionally streamed from a `futures::Stream` or `futures::AsyncRead`, and which allows the `content-type` and `content-length` headers to be set.
+
 # 0.13.0
 
 - Upgrade to syn 3.

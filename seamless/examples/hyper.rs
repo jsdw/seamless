@@ -4,19 +4,28 @@
 //!
 //! curl localhost:8000/api/echo -H 'content-type: application/json' -d '"hello"'
 //! curl localhost:8000/api/reverse -H 'content-type: application/json' -d '[1,2,3,4,5]'
+//! curl localhost:8000/api/count
 //! curl localhost:8000/api/info
 //!
 //! To see the API in action. Any request whose path doesn't begin with `/api`
 //! will get a 404 response.
 use bytes::Bytes;
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use http::{Request, Response, StatusCode};
-use http_body_util::{BodyExt, Full};
-use hyper::{body::Incoming, server::conn::http1, service::service_fn};
+use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Full, StreamBody};
+use hyper::{
+    body::{Frame, Incoming},
+    server::conn::http1,
+    service::service_fn,
+};
 use hyper_util::rt::TokioIo;
 use seamless::{
     api::{Api, RouteError},
-    handler::{body::FromJson, request::Bytes as RequestBytes, response::ToJson},
+    handler::{
+        body::FromJson,
+        request::Bytes as RequestBytes,
+        response::{Body as ResponseBody, ToBinary, ToJson},
+    },
 };
 use std::{convert::Infallible, sync::Arc};
 use tokio::net::TcpListener;
@@ -35,6 +44,16 @@ async fn main() {
         .description("Reverse an array of numbers")
         .handler(|body: FromJson<Vec<usize>>| {
             ToJson(body.0.into_iter().rev().collect::<Vec<usize>>())
+        });
+    seamless_api
+        .add("/api/count")
+        .description("Stream back the numbers 1 to 100,000, one per line")
+        .handler(|| {
+            // This response is streamed back to the client one chunk at a time
+            // rather than being built up in memory first.
+            let lines = futures::stream::iter(1..=100_000)
+                .map(|n| Ok::<_, std::io::Error>(format!("{n}\n")));
+            ToBinary::stream(lines).content_type("text/plain")
         });
 
     // The API can hand back information about itself if we want:
@@ -71,12 +90,16 @@ async fn main() {
     }
 }
 
+/// The response body we hand to hyper. This lets us respond with either a
+/// complete body or a streaming one.
+type HyperBody = UnsyncBoxBody<Bytes, std::io::Error>;
+
 /// Forward anything whose path begins with `/api` to seamless, and
 /// return a 404 for everything else.
 async fn router(
     api: Arc<Api>,
     request: Request<Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<HyperBody>, Infallible> {
     if request.uri().path().starts_with("/api") {
         Ok(seamless_to_hyper(&api, request).await)
     } else {
@@ -84,14 +107,30 @@ async fn router(
     }
 }
 
-fn not_found() -> Response<Full<Bytes>> {
+fn not_found() -> Response<HyperBody> {
     Response::builder()
         .status(StatusCode::NOT_FOUND)
-        .body(Full::new(Bytes::new()))
+        .body(full(Bytes::new()))
         .unwrap()
 }
 
-async fn seamless_to_hyper(api: &Api, request: Request<Incoming>) -> Response<Full<Bytes>> {
+/// A complete (non-streaming) body.
+fn full(bytes: Bytes) -> HyperBody {
+    Full::new(bytes)
+        .map_err(|never| match never {})
+        .boxed_unsync()
+}
+
+/// Convert a seamless response body into a hyper one. Complete bodies are handed
+/// over as-is, and streaming bodies are streamed through without being buffered.
+fn to_hyper_body(body: ResponseBody) -> HyperBody {
+    match body.into_full() {
+        Ok(bytes) => full(bytes),
+        Err(stream) => StreamBody::new(stream.map_ok(Frame::data)).boxed_unsync(),
+    }
+}
+
+async fn seamless_to_hyper(api: &Api, request: Request<Incoming>) -> Response<HyperBody> {
     let (parts, body) = request.into_parts();
 
     // Convert the body stream into a seamless-compatible format,
@@ -110,12 +149,12 @@ async fn seamless_to_hyper(api: &Api, request: Request<Incoming>) -> Response<Fu
             RouteError::NotFound(_) => not_found(),
             RouteError::Err(e) => Response::builder()
                 .status(e.code)
-                .body(Full::new(Bytes::from(e.external_message)))
+                .body(full(Bytes::from(e.external_message)))
                 .unwrap(),
         },
         |res| {
-            let (parts, body_bytes) = res.into_parts();
-            Response::from_parts(parts, Full::new(Bytes::from(body_bytes)))
+            let (parts, body) = res.into_parts();
+            Response::from_parts(parts, to_hyper_body(body))
         },
     )
 }

@@ -1,5 +1,5 @@
 #![doc(hidden)]
-use super::response::HandlerResponse;
+use super::response::{Body, HandlerResponse};
 use super::to_async::ToAsync;
 use crate::api::{ApiBody, ApiBodyInfo, ApiError};
 use crate::handler::{request::AsyncReadBody, HandlerBody, HandlerParam};
@@ -15,7 +15,7 @@ pub struct Handler {
     pub handler: Box<
         dyn for<'a> Fn(
                 Request<&'a mut dyn AsyncReadBody>,
-            ) -> Fut<'a, Result<Response<Vec<u8>>, ApiError>>
+            ) -> Fut<'a, Result<Response<Body>, ApiError>>
             + Send
             + Sync,
     >,

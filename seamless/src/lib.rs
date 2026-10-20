@@ -94,7 +94,7 @@ let req = Request::post("/maths.divide")
     .body(Bytes::from_vec(serde_json::to_vec(&DivisionInput { a: 20, b: 10 }).unwrap()))
     .unwrap();
 assert_eq!(
-    api.handle(req).await.unwrap().into_body(),
+    api.handle(req).await.unwrap().into_body().into_vec().await.unwrap(),
     serde_json::to_vec(&DivisionOutput{ a: 20, b: 10, result: 2 }).unwrap()
 );
 # });
@@ -159,7 +159,7 @@ req.extensions_mut().insert(State { value: 123 });
 
 // We can now handle a request that is expecting our `State` to be available.
 // The response comes back as a JSON string.
-let res = api.handle(req).await.unwrap().into_body();
+let res = api.handle(req).await.unwrap().into_body().into_vec().await.unwrap();
 assert_eq!(res, "\"hello, 123\"".as_bytes());
 # })
 ```
@@ -187,7 +187,17 @@ Responses from handlers can be plain old synchronous objects or [`std::future::F
 in either case must implement [`handler::HandlerResponse`]. This trait determines how to create the response to
 hand back to the user.
 
-For convenience, a [`handler::response::ToJson<T>`] type is provided that will encode the response as JSON.
+For convenience, a couple of types are provided which implement this trait:
+
+- [`handler::response::ToJson<T>`] will encode the response as JSON.
+- [`handler::response::ToBinary`] will respond with arbitrary bytes, which can be streamed back (from a
+  [`futures::Stream`] or [`futures::AsyncRead`]) rather than loaded into memory all at once. Note that errors
+  which occur partway through streaming a response can't be turned into an [`struct@api::ApiError`], because the
+  response status will already have been sent.
+
+Responses handed back from [`Api::handle()`] have a [`handler::response::Body`]. This is either a set of bytes that
+are entirely in memory, or a stream of chunks of bytes, and can be handed over to whichever HTTP framework you're
+using without needing to buffer streaming responses (see the examples folder for how this is done in Axum and Hyper).
 
 [`handler::HandlerResponse`] is also implemented for `Option`s and `Result`s, returning a 404 in the event that the
 `Option` is `None`, and returning the error from the `Result` (this must itself implement `Into<ApiError>`) in the

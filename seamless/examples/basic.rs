@@ -52,8 +52,15 @@ async fn main() {
             serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap(),
         ))
         .unwrap();
-    let actual: Value =
-        serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
+    let body = api
+        .handle(req)
+        .await
+        .unwrap()
+        .into_body()
+        .into_vec()
+        .await
+        .unwrap();
+    let actual: Value = serde_json::from_slice(&body).unwrap();
     let expected = serde_json::to_value(json!({ "a": 20, "b": 10, "result": 2 })).unwrap();
     assert_eq!(actual, expected);
 
@@ -79,8 +86,15 @@ async fn main() {
         .header("content-type", "application/json")
         .body(Bytes::from_vec(Vec::new()))
         .unwrap();
-    let actual: Value =
-        serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
+    let body = api
+        .handle(req)
+        .await
+        .unwrap()
+        .into_body()
+        .into_vec()
+        .await
+        .unwrap();
+    let actual: Value = serde_json::from_slice(&body).unwrap();
     let expected = serde_json::to_value(json!({ "status": "Ok" })).unwrap();
     assert_eq!(actual, expected);
 }

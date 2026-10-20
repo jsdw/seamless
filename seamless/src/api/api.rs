@@ -1,6 +1,8 @@
 use super::error::ApiError;
 use super::info::ApiBodyInfo;
-use crate::handler::{request::AsyncReadBody, Handler, IntoHandler};
+use crate::handler::{
+    request::AsyncReadBody, response::Body as ResponseBody, Handler, IntoHandler,
+};
 use http::{method::Method, Request, Response};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -93,14 +95,14 @@ impl Api {
     }
 
     /// Match an incoming [`http::Request`] against our API routes and run the relevant handler if a
-    /// matching one is found. We'll get back bytes representing a JSON response back if all goes ok,
-    /// else we'll get back a [`RouteError`], which will either be [`RouteError::NotFound`] if no matching
-    /// route was found, or a [`RouteError::Err`] if a matching route was found, but that handler emitted
-    /// an error.
+    /// matching one is found. We'll get back an [`http::Response`] whose body is a
+    /// [`crate::handler::response::Body`] if all goes ok, else we'll get back a [`RouteError`],
+    /// which will either be [`RouteError::NotFound`] if no matching route was found, or a
+    /// [`RouteError::Err`] if a matching route was found, but that handler emitted an error.
     pub async fn handle<Body: AsyncReadBody>(
         &self,
         req: Request<Body>,
-    ) -> Result<Response<Vec<u8>>, RouteError<Body, ApiError>> {
+    ) -> Result<Response<ResponseBody>, RouteError<Body, ApiError>> {
         let base_path = &self.base_path.trim_start_matches('/');
         let req_path = req.uri().path().trim_start_matches('/');
 
