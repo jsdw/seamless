@@ -36,8 +36,7 @@ pub trait HandlerResponse {
 pub struct Body(Inner);
 
 enum Inner {
-    // `None` once the bytes have been handed out via the Stream impl.
-    Full(Option<Bytes>),
+    Full(Bytes),
     Stream(BoxStream<'static, std::io::Result<Bytes>>),
 }
 
@@ -59,12 +58,12 @@ impl Default for Body {
 impl Body {
     /// An empty body.
     pub fn empty() -> Body {
-        Body(Inner::Full(None))
+        Body(Inner::Full(Bytes::new()))
     }
 
     /// Create a body from some bytes that are already in memory.
     pub fn from_bytes(bytes: impl Into<Bytes>) -> Body {
-        Body(Inner::Full(Some(bytes.into())))
+        Body(Inner::Full(bytes.into()))
     }
 
     /// Create a streaming body from a [`futures::Stream`] of chunks of bytes.
@@ -100,16 +99,30 @@ impl Body {
         Body(Inner::Stream(stream.boxed()))
     }
 
+    /// If the body is entirely in memory already, this returns a reference to the bytes.
+    /// Else it returns `None` if the body is a stream and thus not yet available.
+    pub fn as_bytes(&self) -> Option<&Bytes> {
+        match &self.0 {
+            Inner::Full(bytes) => Some(bytes),
+            Inner::Stream(_) => None,
+        }
+    }
+
     /// If the body is entirely in memory already, return it as [`Bytes`]. Otherwise,
-    /// hand back the streaming body unchanged.
-    ///
-    /// This is useful when integrating with an HTTP framework; complete bodies can
-    /// be handed over as-is (allowing a `Content-Length` to be set), and only streaming
-    /// bodies need to be handed over as streams.
-    pub fn into_full(self) -> Result<Bytes, Body> {
+    /// hand back the streaming body unchanged in the `Err` variant.
+    pub fn into_bytes(self) -> Result<Bytes, Body> {
         match self.0 {
-            Inner::Full(bytes) => Ok(bytes.unwrap_or_default()),
+            Inner::Full(bytes) => Ok(bytes),
             inner @ Inner::Stream(_) => Err(Body(inner)),
+        }
+    }
+
+    /// Convert the body into a [`BodyStream`], which implements [`futures::Stream`] and
+    /// hands back chunks of bytes as they become available.
+    pub fn into_stream(self) -> BodyStream {
+        match self.0 {
+            Inner::Full(bytes) => BodyStream(BodyStreamInner::Full(bytes)),
+            Inner::Stream(stream) => BodyStream(BodyStreamInner::Stream(stream)),
         }
     }
 
@@ -117,7 +130,7 @@ impl Body {
     /// stream bodies through to the client where possible.
     pub async fn into_vec(self) -> std::io::Result<Vec<u8>> {
         match self.0 {
-            Inner::Full(bytes) => Ok(bytes.map(|b| b.to_vec()).unwrap_or_default()),
+            Inner::Full(bytes) => Ok(bytes.to_vec()),
             Inner::Stream(mut stream) => {
                 let mut out = Vec::new();
                 while let Some(chunk) = stream.next().await {
@@ -129,22 +142,45 @@ impl Body {
     }
 }
 
-impl Stream for Body {
+/// A [`futures::Stream`] of chunks of bytes, obtained via [`Body::into_stream()`].
+pub struct BodyStream(BodyStreamInner);
+
+enum BodyStreamInner {
+    // Empty once the bytes have been handed out (or if there were none to begin
+    // with); we never hand back an empty chunk.
+    Full(Bytes),
+    Stream(BoxStream<'static, std::io::Result<Bytes>>),
+}
+
+impl std::fmt::Debug for BodyStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            BodyStreamInner::Full(bytes) => f.debug_tuple("BodyStream::Full").field(bytes).finish(),
+            BodyStreamInner::Stream(_) => f.debug_tuple("BodyStream::Stream").finish(),
+        }
+    }
+}
+
+impl Stream for BodyStream {
     type Item = std::io::Result<Bytes>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // Body is Unpin, since both Bytes and BoxStream are.
+        // BodyStream is Unpin, since both Bytes and BoxStream are.
         match &mut self.get_mut().0 {
-            Inner::Full(bytes) => Poll::Ready(bytes.take().map(Ok)),
-            Inner::Stream(stream) => stream.poll_next_unpin(cx),
+            BodyStreamInner::Full(bytes) if bytes.is_empty() => Poll::Ready(None),
+            // Taking leaves an empty `Bytes` behind, which doesn't allocate.
+            BodyStreamInner::Full(bytes) => Poll::Ready(Some(Ok(std::mem::take(bytes)))),
+            BodyStreamInner::Stream(stream) => stream.poll_next_unpin(cx),
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         match &self.0 {
-            Inner::Full(Some(_)) => (1, Some(1)),
-            Inner::Full(None) => (0, Some(0)),
-            Inner::Stream(stream) => stream.size_hint(),
+            BodyStreamInner::Full(bytes) => {
+                let n = usize::from(!bytes.is_empty());
+                (n, Some(n))
+            }
+            BodyStreamInner::Stream(stream) => stream.size_hint(),
         }
     }
 }
@@ -253,12 +289,12 @@ impl ToBinary {
 
         // If the body length is known up front, tell the client:
         let mut content_length = None;
-        if let Ok(bytes) = body.() {
+        if let Some(bytes) = body.as_bytes() {
             content_length = Some(bytes.len());
         }
 
         ToBinary {
-            body: body.into(),
+            body,
             content_type: Cow::Borrowed("application/octet-stream"),
             content_length,
         }
@@ -292,7 +328,7 @@ impl ToBinary {
     /// Set the `content-length` header of the response. This is useful when streaming
     /// something whose size is known ahead of time (eg a file), so that clients can
     /// report progress. It's up to you to ensure that the length is correct.
-    pub fn content_length(mut self, len: u64) -> ToBinary {
+    pub fn content_length(mut self, len: usize) -> ToBinary {
         self.content_length = Some(len);
         self
     }
@@ -353,37 +389,54 @@ mod test_body {
     use super::*;
 
     #[tokio::test]
-    async fn full_body_is_full() {
+    async fn full_body_is_bytes() {
         let body = Body::from(vec![1, 2, 3]);
-        assert_eq!(body.into_full().unwrap(), Bytes::from(vec![1, 2, 3]));
-        assert_eq!(Body::empty().into_full().unwrap(), Bytes::new());
+        assert_eq!(body.as_bytes(), Some(&Bytes::from(vec![1, 2, 3])));
+        assert_eq!(body.into_bytes().unwrap(), Bytes::from(vec![1, 2, 3]));
+
+        let body = Body::empty();
+        assert_eq!(body.as_bytes(), Some(&Bytes::new()));
+        assert_eq!(body.into_bytes().unwrap(), Bytes::new());
     }
 
     #[tokio::test]
     async fn full_body_streams_once() {
         let chunks: Vec<_> = Body::from(vec![1, 2, 3])
+            .into_stream()
             .map(|c| c.unwrap())
             .collect()
             .await;
         assert_eq!(chunks, vec![Bytes::from(vec![1, 2, 3])]);
 
-        let chunks: Vec<_> = Body::empty().collect().await;
+        let chunks: Vec<_> = Body::empty().into_stream().collect().await;
         assert!(chunks.is_empty());
     }
 
     #[tokio::test]
-    async fn stream_body_is_not_full() {
+    async fn full_body_stream_size_hint() {
+        let mut stream = Body::from(vec![1, 2, 3]).into_stream();
+        assert_eq!(stream.size_hint(), (1, Some(1)));
+        assert!(stream.next().await.is_some());
+        assert_eq!(stream.size_hint(), (0, Some(0)));
+        assert!(stream.next().await.is_none());
+
+        assert_eq!(Body::empty().into_stream().size_hint(), (0, Some(0)));
+    }
+
+    #[tokio::test]
+    async fn stream_body_is_not_bytes() {
         let body = Body::from_stream(stream::iter(vec![Ok(vec![1]), Ok(vec![2, 3])]));
+        assert!(body.as_bytes().is_none());
         let body = body
-            .into_full()
-            .expect_err("stream body should not be full");
+            .into_bytes()
+            .expect_err("stream body should not be bytes");
         assert_eq!(body.into_vec().await.unwrap(), vec![1, 2, 3]);
     }
 
     #[tokio::test]
     async fn stream_body_preserves_chunks() {
         let body = Body::from_stream(stream::iter(vec![Ok(vec![1]), Ok(vec![2, 3])]));
-        let chunks: Vec<_> = body.map(|c| c.unwrap()).collect().await;
+        let chunks: Vec<_> = body.into_stream().map(|c| c.unwrap()).collect().await;
         assert_eq!(chunks, vec![Bytes::from(vec![1]), Bytes::from(vec![2, 3])]);
     }
 
@@ -402,7 +455,7 @@ mod test_body {
         // More than one chunk's worth of data:
         let data: Vec<u8> = (0..20_000u32).map(|n| n as u8).collect();
         let body = Body::from_reader(futures::io::Cursor::new(data.clone()));
-        assert!(body.into_full().is_err());
+        assert!(body.as_bytes().is_none());
 
         let body = Body::from_reader(futures::io::Cursor::new(data.clone()));
         assert_eq!(body.into_vec().await.unwrap(), data);

@@ -19,7 +19,7 @@ async fn to_json_bodies_are_full() {
 
     let res = api.handle(get("/json")).await.unwrap();
     assert_eq!(res.headers()["content-type"], "application/json");
-    assert_eq!(&*res.into_body().into_full().unwrap(), b"[1,2,3]");
+    assert_eq!(&*res.into_body().into_bytes().unwrap(), b"[1,2,3]");
 }
 
 #[tokio::test]
@@ -29,8 +29,9 @@ async fn to_binary_full_body() {
 
     let res = api.handle(get("/bytes")).await.unwrap();
     assert_eq!(res.headers()["content-type"], "application/octet-stream");
-    assert!(res.headers().get("content-length").is_none());
-    assert_eq!(&*res.into_body().into_full().unwrap(), &[1, 2, 3]);
+    // The length is known up front, so it's set automatically:
+    assert_eq!(res.headers()["content-length"], "3");
+    assert_eq!(&*res.into_body().into_bytes().unwrap(), &[1, 2, 3]);
 }
 
 #[tokio::test]
@@ -50,9 +51,9 @@ async fn to_binary_streaming_body() {
     // The body should come back as a stream, chunk by chunk:
     let body = res
         .into_body()
-        .into_full()
+        .into_bytes()
         .expect_err("should be a streaming body");
-    let chunks: Vec<_> = body.map(|c| c.unwrap()).collect().await;
+    let chunks: Vec<_> = body.into_stream().map(|c| c.unwrap()).collect().await;
     assert_eq!(chunks, vec!["1\n", "2\n", "3\n"]);
 }
 

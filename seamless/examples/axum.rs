@@ -105,9 +105,9 @@ async fn seamless_to_axum(state: State<Arc<Api>>, request: Request<Body>) -> Res
         |res| {
             // Hand complete bodies over as-is, and stream the rest.
             let (parts, body) = res.into_parts();
-            let body = match body.into_full() {
+            let body = match body.into_bytes() {
                 Ok(bytes) => Body::from(bytes),
-                Err(stream) => Body::from_stream(stream),
+                Err(body) => Body::from_stream(body.into_stream()),
             };
             Response::from_parts(parts, body)
         },

@@ -124,9 +124,9 @@ fn full(bytes: Bytes) -> HyperBody {
 /// Convert a seamless response body into a hyper one. Complete bodies are handed
 /// over as-is, and streaming bodies are streamed through without being buffered.
 fn to_hyper_body(body: ResponseBody) -> HyperBody {
-    match body.into_full() {
+    match body.into_bytes() {
         Ok(bytes) => full(bytes),
-        Err(stream) => StreamBody::new(stream.map_ok(Frame::data)).boxed_unsync(),
+        Err(body) => StreamBody::new(body.into_stream().map_ok(Frame::data)).boxed_unsync(),
     }
 }
 
