@@ -135,6 +135,7 @@ impl Api {
     }
 
     /// Return information about the API routes that have been defined so far.
+    /// The information returned is sorted, though the order is unspecified and may change.
     pub fn info(&self) -> Vec<RouteInfo> {
         let mut info = vec![];
         for ((_method, key), val) in &self.routes {
@@ -146,7 +147,11 @@ impl Api {
                 response_type: val.resolved_handler.response_type.clone(),
             });
         }
-        info.sort_by(|a, b| a.name.cmp(&b.name));
+        // Sort by name, then by method, so that routes sharing a path come out
+        // in a stable order rather than in `HashMap` iteration order.
+        info.sort_by(|a, b| {
+            a.name.cmp(&b.name).then_with(|| a.method.cmp(&b.method))
+        });
         info
     }
 }
