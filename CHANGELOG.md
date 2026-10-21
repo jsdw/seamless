@@ -1,5 +1,8 @@
 # Unreleased
 
+- **Breaking:** `Option<T>` is now described as `OneOf [T, Null]` (ie `T | null`) rather than `Optional`, since serde serializes `None` as `null`. Previously, clients generated from the info would wrongly expect the key to be omitted.
+- Add `#[api_body(optional)]` for `Option<T>` fields in `ApiBody` structs and enum variants. The field is described as `Optional` (ie `{ key?: T }`), is omitted from the JSON when `None`, and is treated as `None` when missing.
+- `#[api_body(flatten)]` on an enum variant field is now a clear compile error rather than a confusing one.
 - **Breaking:** `HandlerBody::handler_method()` no longer defaults to POST and must be implemented by every `HandlerBody` type. Custom body types that relied on the default should add `fn handler_method() -> Method { Method::POST }`.
 - Fix `Capped<T, N>` always reporting POST as its handler method; it now uses `T`'s method, so wrapping a body type that expects eg PUT no longer changes the route.
 - **Breaking:** Responses can now be streamed. `Api::handle()` and `HandlerResponse::handler_response()` now produce an `http::Response<seamless::handler::response::Body>` rather than an `http::Response<Vec<u8>>`. A `Body` is either a complete set of bytes (use `Body::as_bytes()` or `Body::into_bytes()` to get at them without streaming) or a stream of `bytes::Bytes` chunks (use `Body::into_stream()` to obtain a `BodyStream`, which implements `futures::Stream`). Code which previously used `res.into_body()` as a `Vec<u8>` can use `res.into_body().into_vec().await` instead, though it's better to pass streaming bodies on to your HTTP framework as streams (see the Axum and Hyper examples).

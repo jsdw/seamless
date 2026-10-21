@@ -91,8 +91,10 @@ pub enum ApiBodyType {
         /// The exact string literal that we expect.
         literal: String,
     },
-    /// The type is optional, and need not be provided. It corresponds to either
-    /// `{ key?: Foo }` in objects, or `Foo | undefined` in other contexts.
+    /// The object key may be omitted, eg `{ key?: Foo }`. This is expected to be used
+    /// on struct fields in conjunction with serde's `skip_serializing_if = Option::is_none`
+    /// attribute. Adding `#[api_body(optional)]` on a field when using the `ApiBody` macro
+    /// emits this, as well as the corresponding serde attribute.
     Optional {
         /// The type that is optional.
         value: Box<ApiBodyInfo>,
@@ -157,14 +159,37 @@ impl<T: ApiBody> ApiBody for HashMap<String, T> {
         }
     }
 }
+
+// Serde serializes `None` as `null`, so the Option type is `T | null`.
 impl<T: ApiBody> ApiBody for Option<T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::Optional {
-                value: Box::new(T::api_body_info()),
+            ty: ApiBodyType::OneOf {
+                values: vec![T::api_body_info(), <()>::api_body_info()],
             },
         }
+    }
+}
+
+/// The [`ApiBody`](seamless_macros::ApiBody) macro uses this for fields marked with
+/// `#[api_body(optional)]`, to get at the inner type of an Option, and confirm that
+/// the field is indeed an Option.
+///
+/// This is not meant to be used by hand.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`#[api_body(optional)]` can only be used on fields of type `Option<T>`",
+    label = "`{Self}` is not an `Option`"
+)]
+pub trait OptionalField {
+    type Inner: ApiBody;
+    fn is_none(&self) -> bool;
+}
+impl<T: ApiBody> OptionalField for Option<T> {
+    type Inner = T;
+    fn is_none(&self) -> bool {
+        Option::is_none(self)
     }
 }
 

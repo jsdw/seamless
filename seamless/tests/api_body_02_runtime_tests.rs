@@ -466,6 +466,208 @@ fn raw_identifiers_use_serde_names() {
     );
 }
 
+#[test]
+fn option_is_nullable_by_default() {
+    #[ApiBody]
+    #[allow(dead_code)]
+    struct Foo {
+        /// Maybe a number
+        a: Option<usize>,
+        b: Vec<Option<bool>>,
+    }
+
+    #[ApiBody]
+    #[allow(dead_code)]
+    struct Bar(Option<usize>);
+
+    assert_eq!(
+        Foo::api_body_info(),
+        info(ApiBodyType::Object {
+            keys: map! {
+                s("a") => ApiBodyInfo {
+                    description: s("Maybe a number"),
+                    ..nullable(ApiBodyType::Number)
+                },
+                s("b") => info(ApiBodyType::ArrayOf {
+                    value: Box::new(nullable(ApiBodyType::Boolean))
+                })
+            }
+        })
+    );
+    assert_eq!(Bar::api_body_info(), nullable(ApiBodyType::Number));
+    assert_eq!(
+        <Option<String>>::api_body_info(),
+        nullable(ApiBodyType::String)
+    );
+
+    // `None` is serialized as `null`, matching the `T | null` description:
+    assert_eq!(
+        to_json_value(Foo {
+            a: None,
+            b: vec![Some(true), None]
+        }),
+        serde_json::json!({ "a": null, "b": [true, null] })
+    );
+    assert_eq!(to_json_value(Bar(None)), serde_json::json!(null));
+}
+
+#[test]
+fn optional_struct_fields() {
+    type Maybe<T> = Option<T>;
+
+    #[ApiBody]
+    #[allow(dead_code)]
+    struct Foo {
+        /// Maybe a number
+        #[api_body(optional)]
+        a: Option<usize>,
+        #[api_body(optional)]
+        b: std::option::Option<String>,
+        #[api_body(optional)]
+        c: Option<Option<bool>>,
+        d: Maybe<bool>,
+        #[api_body(optional)]
+        e: Maybe<bool>,
+    }
+
+    assert_eq!(
+        Foo::api_body_info(),
+        info(ApiBodyType::Object {
+            keys: map! {
+                s("a") => ApiBodyInfo {
+                    description: s("Maybe a number"),
+                    ..optional(info(ApiBodyType::Number))
+                },
+                s("b") => optional(info(ApiBodyType::String)),
+                s("c") => optional(nullable(ApiBodyType::Boolean)),
+                s("d") => nullable(ApiBodyType::Boolean),
+                s("e") => optional(info(ApiBodyType::Boolean))
+            }
+        })
+    );
+
+    // Marked fields are omitted when `None`, others are `null`:
+    assert_eq!(
+        to_json_value(Foo {
+            a: None,
+            b: None,
+            c: None,
+            d: None,
+            e: None
+        }),
+        serde_json::json!({ "d": null })
+    );
+    assert_eq!(
+        to_json_value(Foo {
+            a: Some(1),
+            b: Some(s("hi")),
+            c: Some(None),
+            d: Some(true),
+            e: Some(false)
+        }),
+        serde_json::json!({ "a": 1, "b": "hi", "c": null, "d": true, "e": false })
+    );
+
+    // Missing keys and `null`s both deserialize to `None`:
+    let foo: Foo = serde_json::from_value(serde_json::json!({ "b": null, "d": null })).unwrap();
+    assert_eq!(
+        (foo.a, foo.b, foo.c, foo.d, foo.e),
+        (None, None, None, None, None)
+    );
+}
+
+#[test]
+fn optional_enum_fields() {
+    #[ApiBody]
+    #[allow(dead_code)]
+    enum Foo {
+        A {
+            #[api_body(optional)]
+            a: Option<usize>,
+            b: Option<usize>,
+        },
+    }
+
+    assert_eq!(
+        Foo::api_body_info(),
+        info(ApiBodyType::OneOf {
+            values: vec![info(ApiBodyType::Object {
+                keys: map! {
+                    s("kind") => ApiBodyInfo {
+                        description: s("Variant tag"),
+                        ty: ApiBodyType::StringLiteral { literal: s("A") }
+                    },
+                    s("a") => optional(info(ApiBodyType::Number)),
+                    s("b") => nullable(ApiBodyType::Number)
+                }
+            })]
+        })
+    );
+
+    assert_eq!(
+        to_json_value(Foo::A { a: None, b: None }),
+        serde_json::json!({ "kind": "A", "b": null })
+    );
+    assert_eq!(
+        to_json_value(Foo::A {
+            a: Some(1),
+            b: Some(2)
+        }),
+        serde_json::json!({ "kind": "A", "a": 1, "b": 2 })
+    );
+    let Foo::A { a, b } =
+        serde_json::from_value(serde_json::json!({ "kind": "A", "b": null })).unwrap();
+    assert_eq!((a, b), (None, None));
+}
+
+#[test]
+fn optional_deserialize_only() {
+    #[ApiBody(Deserialize)]
+    #[allow(dead_code)]
+    struct Foo {
+        #[api_body(optional)]
+        a: Option<usize>,
+        b: bool,
+    }
+
+    assert_eq!(
+        Foo::api_body_info(),
+        info(ApiBodyType::Object {
+            keys: map! {
+                s("a") => optional(info(ApiBodyType::Number)),
+                s("b") => info(ApiBodyType::Boolean)
+            }
+        })
+    );
+
+    // The key can be omitted or null:
+    let foo: Foo = serde_json::from_value(serde_json::json!({ "b": true })).unwrap();
+    assert_eq!(foo.a, None);
+    let foo: Foo = serde_json::from_value(serde_json::json!({ "a": null, "b": true })).unwrap();
+    assert_eq!(foo.a, None);
+    let foo: Foo = serde_json::from_value(serde_json::json!({ "a": 1, "b": true })).unwrap();
+    assert_eq!(foo.a, Some(1));
+}
+
+fn info(ty: ApiBodyType) -> ApiBodyInfo {
+    ApiBodyInfo {
+        description: s(""),
+        ty,
+    }
+}
+
+fn nullable(ty: ApiBodyType) -> ApiBodyInfo {
+    info(ApiBodyType::OneOf {
+        values: vec![info(ty), info(ApiBodyType::Null)],
+    })
+}
+
+fn optional(ty: ApiBodyInfo) -> ApiBodyInfo {
+    info(ApiBodyType::Optional {
+        value: Box::new(ty),
+    })
+}
+
 fn to_json_value(value: impl serde::Serialize) -> serde_json::Value {
     serde_json::to_value(value)
         .expect("Failed to serialize to JSON due to an invalid manual implementation (2)")

@@ -1,0 +1,26 @@
+error[E0277]: `#[api_body(optional)]` can only be used on fields of type `Option<T>`
+ --> tests/api_body_compile_tests/12_optional_not_option.rs:1:1
+  |
+1 | #[seamless::ApiBody]
+  | ^^^^^^^^^^^^^^^^^^^^ `usize` is not an `Option`
+  |
+  = help: the trait `seamless::api::OptionalField` is not implemented for `usize`
+help: the trait `seamless::api::OptionalField` is implemented for `Option<T>`
+ --> src/api/info.rs
+  |
+  | impl<T: ApiBody> OptionalField for Option<T> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `seamless::ApiBody` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `#[api_body(optional)]` can only be used on fields of type `Option<T>`
+ --> tests/api_body_compile_tests/12_optional_not_option.rs:4:10
+  |
+4 |     bar: usize,
+  |          ^^^^^ `usize` is not an `Option`
+  |
+  = help: the trait `seamless::api::OptionalField` is not implemented for `usize`
+help: the trait `seamless::api::OptionalField` is implemented for `Option<T>`
+ --> src/api/info.rs
+  |
+  | impl<T: ApiBody> OptionalField for Option<T> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

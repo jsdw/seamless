@@ -177,11 +177,21 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
         TokenStream2::new()
     };
 
-    // "api_body" tag attr, if used, needs stripping before we output the enum:
+    // Replace our "api_body" attrs with corresponding serde attrs
     let mut sanitized_e = e;
     sanitized_e
         .attrs
         .retain(|attr| !attr.path().is_ident(attrs::NAME));
+    for variant in sanitized_e.variants.iter_mut() {
+        for field in variant.fields.iter_mut() {
+            let props = attrs::parse(&field.attrs)?;
+            if props.flatten {
+                let msg = "#[api_body(flatten)] can't be used on enum variant fields";
+                return Err(syn::Error::new_spanned(field, msg));
+            }
+            replace_with_serde_attrs(field, &props);
+        }
+    }
 
     // We tell serde where to look for its crate contents (otherwise it expects `serde::*`
     // to exist, which it might not.)
@@ -308,19 +318,11 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
         TokenStream2::new()
     };
 
-    // "api_body" tag attr, if used, needs stripping before we output the enum:
+    // Replace "api_body" tags with corresponding serde tags
     let mut sanitized_s = s;
     for field in sanitized_s.fields.iter_mut() {
-        let attr_props = attrs::parse(&field.attrs)?;
-        // Keep all attributes that aren't ours:
-        field
-            .attrs
-            .retain(|attr| !attr.path().is_ident(attrs::NAME));
-        // Append back on a serde(flatten) attr if the field was marked with api_body(flatten):
-        if attr_props.flatten {
-            let new_attr: syn::Attribute = syn::parse_quote! { #[serde(flatten)] };
-            field.attrs.push(new_attr);
-        }
+        let props = attrs::parse(&field.attrs)?;
+        replace_with_serde_attrs(field, &props);
     }
 
     // We tell serde where to look for its crate contents (otherwise it expects `serde::*`
@@ -341,10 +343,40 @@ fn quote_field(f: &Field) -> TokenStream2 {
     let crate_name: syn::Ident = syn::Ident::new(CRATE_NAME_STR, Span::call_site());
     let ty = &f.field.ty;
     let docs = &f.attr_props.docs;
+    // `#[api_body(optional)]` fields are described as `{ key?: T }`. OptionalField is only
+    // implemented for Option<T>, so this fails to compile if the field isn't an Option.
+    let info = if f.attr_props.optional {
+        quote! { ::#crate_name::api::ApiBodyInfo {
+            description: String::new(),
+            ty: ::#crate_name::api::ApiBodyType::Optional {
+                value: Box::new(<<#ty as ::#crate_name::api::OptionalField>::Inner as ::#crate_name::api::ApiBody>::api_body_info())
+            }
+        }}
+    } else {
+        quote! { <#ty as ::#crate_name::api::ApiBody>::api_body_info() }
+    };
     quote! {{
-        let mut t = <#ty as ::#crate_name::api::ApiBody>::api_body_info();
+        let mut t = #info;
         let d = #docs;
         if d.len() > 0 { t.description = d.to_owned(); }
         t
     }}
+}
+
+/// Swap our `api_body` field attrs for the serde attrs that they correspond to.
+fn replace_with_serde_attrs(field: &mut syn::Field, props: &attrs::Props) {
+    field
+        .attrs
+        .retain(|attr| !attr.path().is_ident(attrs::NAME));
+
+    if props.flatten {
+        field.attrs.push(syn::parse_quote! { #[serde(flatten)] });
+    }
+
+    if props.optional {
+        // Omit the field when it's None, and default it to None when it's missing:
+        field.attrs.push(syn::parse_quote! {
+            #[serde(default, skip_serializing_if = "::seamless::api::OptionalField::is_none")]
+        });
+    }
 }

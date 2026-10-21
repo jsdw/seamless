@@ -1,0 +1,6 @@
+error: #[api_body(flatten)] can't be used on enum variant fields
+ --> tests/api_body_compile_tests/15_enum_flatten.rs:4:9
+  |
+4 | /         #[api_body(flatten)]
+5 | |         bar: Bar,
+  | |________________^

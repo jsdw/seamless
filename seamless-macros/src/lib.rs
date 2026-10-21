@@ -21,6 +21,9 @@ use syn::spanned::Spanned;
 ///   works the same as `#[serde(tag = "foo")]` would.
 /// - `#[api_body(flatten)]`: Used on a struct field whose value is itself a struct, and
 ///   works the same as `#[serde(flatten)]` would.
+/// - `#[api_body(optional)]`: Used on a field of type `Option<T>`, this will skip serializing
+///   the field if the value is `None`, and return the type info `ApiBodyInfo::Optional` so
+///   that clients can properly type this.
 ///
 /// # Notes
 ///
