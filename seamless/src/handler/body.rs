@@ -62,12 +62,7 @@ impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
         req.into_body()
             .read_to_end(&mut body)
             .await
-            .map_err(|e| ApiError {
-                code: 400,
-                internal_message: e.to_string(),
-                external_message: e.to_string(),
-                value: None,
-            })?;
+            .map_err(io_error_to_api_error)?;
 
         // Assume JSON and parse:
         let json = serde_json::from_slice(&body).map_err(|e| ApiError {
@@ -140,12 +135,7 @@ impl HandlerBody for FromBinary {
         req.into_body()
             .read_to_end(&mut body)
             .await
-            .map_err(|e| ApiError {
-                code: 400,
-                internal_message: e.to_string(),
-                external_message: e.to_string(),
-                value: None,
-            })?;
+            .map_err(io_error_to_api_error)?;
         Ok(FromBinary(body))
     }
 
@@ -235,6 +225,23 @@ impl<T: ApiBody + HandlerBody + IntoBody, const MAX_BYTES: usize> IntoBody
     }
 }
 
+/// Map io errors in reading HTTP bodies into suitable ApiErrors
+fn io_error_to_api_error(e: std::io::Error) -> ApiError {
+    use crate::handler::request::CappedSizeLimitError;
+
+    let (msg, code) = match e.downcast::<CappedSizeLimitError>() {
+        Ok(e) => (e.to_string(), 413),
+        Err(e) => (e.to_string(), 400)
+    };
+
+    ApiError {
+        code,
+        internal_message: msg.clone(),
+        external_message: msg,
+        value: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +269,46 @@ mod tests {
         assert_eq!(<Capped<PutBody, 1024> as HandlerBody>::handler_method(), Method::PUT);
         assert_eq!(<Capped<FromBinary, 1024> as HandlerBody>::handler_method(), Method::POST);
         assert_eq!(<Capped<FromJson<String>, 1024> as HandlerBody>::handler_method(), Method::POST);
+    }
+
+    #[tokio::test]
+    async fn capped_returns_413_when_body_too_large() {
+        use crate::handler::request::Bytes;
+
+        // Oversized binary body:
+        let mut body = Bytes::from_vec(vec![0u8; 11]);
+        let req = Request::post("/")
+            .body(&mut body as &mut dyn AsyncReadBody)
+            .unwrap();
+        let err = <Capped<FromBinary, 10> as HandlerBody>::handler_body(req)
+            .await
+            .err()
+            .expect("body exceeding the cap should be rejected");
+        assert_eq!(err.code, 413);
+        assert_eq!(err.external_message, "Size limit exceeded");
+
+        // Oversized JSON body:
+        let mut body = Bytes::from_vec(br#""hello world""#.to_vec());
+        let req = Request::post("/")
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(&mut body as &mut dyn AsyncReadBody)
+            .unwrap();
+        let err = <Capped<FromJson<String>, 10> as HandlerBody>::handler_body(req)
+            .await
+            .err()
+            .expect("body exceeding the cap should be rejected");
+        assert_eq!(err.code, 413);
+        assert_eq!(err.external_message, "Size limit exceeded");
+
+        // A body exactly at the cap is fine:
+        let mut body = Bytes::from_vec(vec![1u8; 10]);
+        let req = Request::post("/")
+            .body(&mut body as &mut dyn AsyncReadBody)
+            .unwrap();
+        let res = <Capped<FromBinary, 10> as HandlerBody>::handler_body(req)
+            .await
+            .unwrap_or_else(|e| panic!("body within the cap should be accepted: {}", e.internal_message));
+        assert_eq!(res.0.0, vec![1u8; 10]);
     }
 
     #[test]

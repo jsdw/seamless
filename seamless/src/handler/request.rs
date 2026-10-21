@@ -148,6 +148,16 @@ pub(crate) struct CappedAsyncRead<T: AsyncRead, const MAX: usize> {
     bytes_read: usize,
 }
 
+/// The error handed back when the size limit is hit for some request.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CappedSizeLimitError;
+impl core::error::Error for CappedSizeLimitError {}
+impl core::fmt::Display for CappedSizeLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Size limit exceeded")
+    }
+}
+
 impl<T: AsyncRead, const MAX: usize> AsyncRead for CappedAsyncRead<T, MAX> {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -171,7 +181,7 @@ impl<T: AsyncRead, const MAX: usize> AsyncRead for CappedAsyncRead<T, MAX> {
         if *bytes_read > MAX {
             return Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
-                "Size limit exceeded",
+                CappedSizeLimitError,
             )));
         }
 

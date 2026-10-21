@@ -53,6 +53,9 @@ impl Api {
     /// and are given back a [`RouteBuilder`] which can be used to give the route a handler
     /// and a description.
     ///
+    /// If you add a route at the same path and requiring the same method as an existing route,
+    /// the existing route will be silently overwritten.
+    ///
     /// # Examples
     ///
     /// ```
