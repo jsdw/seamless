@@ -42,4 +42,5 @@ fn compile_tests() {
     t.pass("tests/api_error_compile_tests/09_enum_toplevel_attrs.rs");
     t.pass("tests/api_error_compile_tests/10_enum_fields.rs");
     t.compile_fail("tests/api_error_compile_tests/11_enum_empty.rs");
+    t.compile_fail("tests/api_error_compile_tests/12_inner_with_other_attrs.rs");
 }

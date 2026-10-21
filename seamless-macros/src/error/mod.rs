@@ -106,7 +106,8 @@ pub fn parse_enum(e: syn::ItemEnum) -> TokenStream2 {
             }
             enum_items.extend(quote! {
                 #struct_name::#ident (inner) => inner.into(),
-            })
+            });
+            continue;
         }
 
         let full_ident = match variant.fields {

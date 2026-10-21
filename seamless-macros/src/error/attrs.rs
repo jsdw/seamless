@@ -149,14 +149,14 @@ impl ApiErrorAttrs {
 
         // A thing can't be marked "inner" and have any other internal/external/code props,
         // since we'll be ignoring them all anyway:
-        if inner_tok.is_some()
+        if let Some(inner_tok) = &inner_tok
             && (external_tok.is_some()
                 || external_message.is_some()
                 || internal_tok.is_some()
                 || code.is_some())
         {
             return Err(syn::Error::new_spanned(
-                external_tok.unwrap(),
+                inner_tok,
                 "'inner' does not make sense alongside any other attributes",
             ));
         }
