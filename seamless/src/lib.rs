@@ -7,6 +7,8 @@ Seamless supports async handlers and streaming HTTP requests, but is entirely HT
 agnostic: it can be wired in to your frameworks of choice. For instance, you could use seamless to handle the
 API routes in an Axum app and use normal Axum routes to serve other content alongside this API.
 
+[See the examples](https://github.com/jsdw/seamless/tree/master/seamless/examples)
+
 # How does it work?
 
 Each API route that you wish to create exists at some path, and is given a handler function which can expect
