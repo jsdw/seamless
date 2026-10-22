@@ -18,8 +18,8 @@ use seamless_info::{ApiBodyInfo, ApiBodyType, RouteInfo};
 const INDENT: &str = "    ";
 
 /// Take the JSON obtained by serializing the [`Vec<RouteInfo>`] for some API (ie the result of
-/// calling `seamless::Api::info()`), and generate TypeScript for a type safe client for
-/// the API from it.
+/// calling `seamless::Api::info()`), and write TypeScript for a type safe client for the API
+/// to the [`Write`] implementation provided (eg a [`String`]).
 ///
 /// The generated TypeScript contains:
 ///
@@ -37,8 +37,9 @@ const INDENT: &str = "    ";
 ///
 /// Errors if the JSON provided can't be deserialized into an [`Vec<RouteInfo>`], if a route name
 /// can't be turned into names in the generated TypeScript, or if two routes would end up with the
-/// same name in the generated TypeScript.
-pub fn generate_client(route_info: &str) -> Result<String, Error> {
+/// same name in the generated TypeScript. Nothing is written in any of these cases. Also errors
+/// if writing to `out` fails, in which case some of the output may already have been written.
+pub fn generate_client<W: Write + ?Sized>(route_info: &str, out: &mut W) -> Result<(), Error> {
     let mut routes: Vec<RouteInfo> =
         serde_json::from_str(route_info).map_err(Error::Deserialize)?;
     routes.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.method.cmp(&b.method)));
@@ -47,9 +48,7 @@ pub fn generate_client(route_info: &str) -> Result<String, Error> {
     check_type_names(&routes)?;
     let client = build_client_tree(&routes)?;
 
-    let mut out = String::new();
-    write_ts(&mut out, &routes, &client).expect("writing to a String can't fail");
-    Ok(out)
+    write_ts(out, &routes, &client).map_err(Error::Write)
 }
 
 /// An error generating the TypeScript client.
@@ -58,6 +57,9 @@ pub enum Error {
     /// The JSON provided could not be deserialized into an [`Vec<RouteInfo>`].
     #[error("Could not deserialize the API info: {0}")]
     Deserialize(serde_json::Error),
+    /// The generated TypeScript could not be written to the output.
+    #[error("Could not write the generated TypeScript")]
+    Write(fmt::Error),
     /// The route name is empty, or one of its `.` or `/` separated parts contains no letters
     /// or digits, so it can't be named in the generated TypeScript.
     #[error("The route '{0}' can't be named in the generated TypeScript")]
@@ -207,8 +209,8 @@ fn build_client_tree<'r, 'a>(
     Ok(tree)
 }
 
-fn write_ts(
-    out: &mut String,
+fn write_ts<W: Write + ?Sized>(
+    out: &mut W,
     routes: &[Route<'_>],
     client: &BTreeMap<&str, ClientNode<'_, '_>>,
 ) -> fmt::Result {
@@ -217,7 +219,7 @@ fn write_ts(
     // The types for each route, separated by two blank lines:
     for (idx, route) in routes.iter().enumerate() {
         let info = route.info;
-        out.push_str(if idx == 0 { "\n" } else { "\n\n" });
+        out.write_str(if idx == 0 { "\n" } else { "\n\n" })?;
         write_route_comment(out, route, "/*", 0)?;
         write!(out, "export type {} = ", route.type_name)?;
         write_type(out, &info.response_type.ty, 0)?;
@@ -230,7 +232,7 @@ fn write_ts(
     }
 
     // The client:
-    out.push_str(concat!(
+    out.write_str(concat!(
         "\n",
         "/**\n",
         " * Instantiate a fully typed API client from the above, given an\n",
@@ -239,15 +241,15 @@ fn write_ts(
         " * to return the expected response type.\n",
         " */\n",
         "export function createApiClient<O = never>(api: (method: string, route: string, params?: any, opts?: O) => Promise<any>) {\n",
-    ));
+    ))?;
     write!(out, "{INDENT}return ")?;
     write_client_group(out, client, 1)?;
     writeln!(out, "\n}}")
 }
 
 /// Write an object in the client containing the nodes given.
-fn write_client_group(
-    out: &mut String,
+fn write_client_group<W: Write + ?Sized>(
+    out: &mut W,
     group: &BTreeMap<&str, ClientNode<'_, '_>>,
     indent: usize,
 ) -> fmt::Result {
@@ -304,8 +306,8 @@ fn write_client_group(
 ///  * Route description
 ///  */
 /// ```
-fn write_route_comment(
-    out: &mut String,
+fn write_route_comment<W: Write + ?Sized>(
+    out: &mut W,
     route: &Route<'_>,
     open: &str,
     indent: usize,
@@ -331,7 +333,7 @@ fn write_route_comment(
 }
 
 /// Write each line of some text as ` * line`, as part of a block comment.
-fn write_comment_lines(out: &mut String, text: &str, indent: usize) -> fmt::Result {
+fn write_comment_lines<W: Write + ?Sized>(out: &mut W, text: &str, indent: usize) -> fmt::Result {
     for line in text.lines() {
         write_indent(out, indent)?;
         let line = line.trim();
@@ -346,7 +348,11 @@ fn write_comment_lines(out: &mut String, text: &str, indent: usize) -> fmt::Resu
 
 /// Write a doc comment for some object property. Single line descriptions are written
 /// as `/** description */`, and longer ones are written as a block.
-fn write_doc_comment(out: &mut String, description: &str, indent: usize) -> fmt::Result {
+fn write_doc_comment<W: Write + ?Sized>(
+    out: &mut W,
+    description: &str,
+    indent: usize,
+) -> fmt::Result {
     let description = description.trim();
     if description.is_empty() {
         return Ok(());
@@ -363,7 +369,7 @@ fn write_doc_comment(out: &mut String, description: &str, indent: usize) -> fmt:
 
 /// Write out the TypeScript type corresponding to some [`ApiBodyType`]. The first line is
 /// written wherever we currently are, and any further lines are indented by `indent`.
-fn write_type(out: &mut String, ty: &ApiBodyType, indent: usize) -> fmt::Result {
+fn write_type<W: Write + ?Sized>(out: &mut W, ty: &ApiBodyType, indent: usize) -> fmt::Result {
     match ty {
         ApiBodyType::String => write!(out, "string"),
         ApiBodyType::Number => write!(out, "number"),
@@ -430,8 +436,8 @@ fn write_type(out: &mut String, ty: &ApiBodyType, indent: usize) -> fmt::Result 
 }
 
 /// Write out a single property of an object, eg `key?: string`, along with its description.
-fn write_object_property(
-    out: &mut String,
+fn write_object_property<W: Write + ?Sized>(
+    out: &mut W,
     key: &str,
     value: &ApiBodyInfo,
     indent: usize,
@@ -458,9 +464,9 @@ fn write_object_property(
     writeln!(out)
 }
 
-fn write_indent(out: &mut String, indent: usize) -> fmt::Result {
+fn write_indent<W: Write + ?Sized>(out: &mut W, indent: usize) -> fmt::Result {
     for _ in 0..indent {
-        out.push_str(INDENT);
+        out.write_str(INDENT)?;
     }
     Ok(())
 }
@@ -631,6 +637,12 @@ mod tests {
         r#type: String,
     }
 
+    fn generate(route_info: &str) -> Result<String, Error> {
+        let mut out = String::new();
+        generate_client(route_info, &mut out)?;
+        Ok(out)
+    }
+
     // The handlers are never called; we only care about the types they describe.
     fn never<T>() -> T {
         unimplemented!()
@@ -774,7 +786,7 @@ export function createApiClient<O = never>(api: (method: string, route: string, 
     #[test]
     fn generates_expected_client() {
         let info = serde_json::to_string(&example_api().info()).unwrap();
-        let ts = generate_client(&info).unwrap();
+        let ts = generate(&info).unwrap();
 
         // Handy for checking the output with `tsc`:
         if let Some(path) = std::env::var_os("SEAMLESS_TS_OUT") {
@@ -814,7 +826,7 @@ export function createApiClient<O = never>(api: (method: string, route: string, 
             route("it's/2nd-route", "GET"),
             route("top", "GET"),
         ]);
-        let ts = generate_client(&info.to_string()).unwrap();
+        let ts = generate(&info.to_string()).unwrap();
 
         assert!(ts.contains(
             r#"export type FlimFlam = {
@@ -844,7 +856,7 @@ export type FlimFlamParams = null"#
 
     #[test]
     fn empty_api() {
-        let ts = generate_client("[]").unwrap();
+        let ts = generate("[]").unwrap();
         assert!(ts.ends_with("    return {}\n}\n"));
     }
 
@@ -859,8 +871,16 @@ export type FlimFlamParams = null"#
     }
 
     #[test]
+    fn writes_nothing_on_error() {
+        let info = json!([route("foo"), route("foo.bar")]).to_string();
+        let mut out = String::new();
+        assert!(generate_client(&info, &mut out).is_err());
+        assert_eq!(out, "");
+    }
+
+    #[test]
     fn errors_on_invalid_json() {
-        let err = generate_client(r#"[{ "name": "foo" }]"#).unwrap_err();
+        let err = generate(r#"[{ "name": "foo" }]"#).unwrap_err();
         assert!(matches!(err, Error::Deserialize(_)));
     }
 
@@ -868,7 +888,7 @@ export type FlimFlamParams = null"#
     fn errors_on_unnameable_routes() {
         for name in ["", "/", "foo.-", "foo.-.bar"] {
             let info = json!([route(name)]).to_string();
-            let err = generate_client(&info).unwrap_err();
+            let err = generate(&info).unwrap_err();
             assert!(
                 matches!(&err, Error::InvalidRouteName(n) if n == name),
                 "unexpected error for '{name}': {err:?}"
@@ -879,7 +899,7 @@ export type FlimFlamParams = null"#
     #[test]
     fn errors_on_clashing_type_names() {
         let info = json!([route("foo.bar_baz"), route("foo_bar.baz")]).to_string();
-        let err = generate_client(&info).unwrap_err();
+        let err = generate(&info).unwrap_err();
         assert_eq!(
             err.to_string(),
             "The routes 'foo.bar_baz' and 'foo_bar.baz' would both generate the TypeScript type 'FooBarBaz'"
@@ -889,18 +909,18 @@ export type FlimFlamParams = null"#
     #[test]
     fn errors_on_clashing_client_paths() {
         let info = json!([route("foo"), route("foo.bar")]).to_string();
-        let err = generate_client(&info).unwrap_err();
+        let err = generate(&info).unwrap_err();
         assert_eq!(
             err.to_string(),
             "The routes 'foo' and 'foo.bar' would clash at 'foo' in the generated client"
         );
 
         let info = json!([route("foo.bar"), route("foo.bar_")]).to_string();
-        let err = generate_client(&info).unwrap_err();
+        let err = generate(&info).unwrap_err();
         assert!(matches!(err, Error::DuplicateTypeName { .. }));
 
         let info = json!([route("foo.bar.baz"), route("foo.bar")]).to_string();
-        let err = generate_client(&info).unwrap_err();
+        let err = generate(&info).unwrap_err();
         assert_eq!(
             err.to_string(),
             "The routes 'foo.bar' and 'foo.bar.baz' would clash at 'foo.bar' in the generated client"

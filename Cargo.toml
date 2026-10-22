@@ -3,7 +3,8 @@ members = [
     "seamless",
     "seamless-info",
     "seamless-macros",
-    "seamless-ts"
+    "seamless-ts",
+    "seamless-ts-bin"
 ]
 resolver = "3"
 
@@ -21,6 +22,7 @@ keywords = ["api", "http", "rpc", "json"]
 seamless = { path = "seamless" }
 seamless_macros = { version = "0.14.0", path = "seamless-macros" }
 seamless_info = { version = "0.14.0", path = "seamless-info", default-features = false }
+seamless_ts = { version = "0.14.0", path = "seamless-ts" }
 
 # Dependencies
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
@@ -29,6 +31,7 @@ http = "1"
 futures = "0.3.34"
 bytes = "1"
 thiserror = { version = "2", default-features = false }
+clap = { version = "4.6.7", features = ["derive"] }
 uuid = "1"
 syn = { version = "3", features = ["full", "extra-traits"] }
 quote = "1"

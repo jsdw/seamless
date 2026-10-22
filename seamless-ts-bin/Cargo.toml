@@ -1,0 +1,22 @@
+[package]
+name = "seamless_ts_bin"
+readme = "README.md"
+description = """
+A CLI tool to generate a type safe TypeScript client from the info describing a 'seamless' API
+"""
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[[bin]]
+name = "seamless-ts"
+path = "src/main.rs"
+
+[dependencies]
+seamless_ts.workspace = true
+clap.workspace = true
