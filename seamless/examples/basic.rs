@@ -28,9 +28,11 @@ async fn main() {
         .description("Reverse an array of numbers")
         // We cap the request body to 8kb (8 * 1024 bytes) by wrapping it in
         // our 'Capped' type:
-        .handler(|Capped(FromJson(body)): Capped<FromJson<Vec<usize>>, { 8 * 1024 }>| {
-            ToJson(body.into_iter().rev().collect::<Vec<usize>>())
-        });
+        .handler(
+            |Capped(FromJson(body)): Capped<FromJson<Vec<usize>>, { 8 * 1024 }>| {
+                ToJson(body.into_iter().rev().collect::<Vec<usize>>())
+            },
+        );
 
     // This route uses custom types (see below):
     api.add("meta/status")
