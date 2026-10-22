@@ -1,4 +1,4 @@
-# seamless-info
+# seamless_info
 
 The types describing a [seamless](https://crates.io/crates/seamless) API, as returned from `Api::info()`.
 

@@ -1,5 +1,5 @@
 [package]
-name = "seamless-info"
+name = "seamless_info"
 readme = "README.md"
 description = """
 The no_std types describing a 'seamless' API, eg as returned from `Api::info()`

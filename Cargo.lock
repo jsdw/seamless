@@ -416,7 +416,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "pretty_assertions",
- "seamless-info",
+ "seamless_info",
  "seamless_macros",
  "serde",
  "serde_json",
@@ -428,7 +428,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "seamless-info"
+name = "seamless_info"
 version = "0.14.0"
 dependencies = [
  "serde",

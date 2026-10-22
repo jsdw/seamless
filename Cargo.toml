@@ -19,7 +19,7 @@ keywords = ["api", "http", "rpc", "json"]
 # Workspace crates
 seamless = { path = "seamless" }
 seamless_macros = { version = "0.14.0", path = "seamless-macros" }
-seamless-info = { version = "0.14.0", path = "seamless-info", default-features = false }
+seamless_info = { version = "0.14.0", path = "seamless-info", default-features = false }
 
 # Dependencies
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
