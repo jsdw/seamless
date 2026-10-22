@@ -24,7 +24,7 @@ pub struct ApiBodyInfo {
 #[doc(hidden)]
 pub struct ApiBodyStructInfo {
     pub description: String,
-    pub struc: HashMap<String, ApiBodyInfo>,
+    pub fields: HashMap<String, ApiBodyInfo>,
 }
 
 /// An enum representing the shape of the JSON that is provided or output from the API.
@@ -91,8 +91,10 @@ pub enum ApiBodyType {
         /// The exact string literal that we expect.
         literal: String,
     },
-    /// The type is optional, and need not be provided. It corresponds to either
-    /// `{ key?: Foo }` in objects, or `Foo | undefined` in other contexts.
+    /// The object key may be omitted, eg `{ key?: Foo }`. This is expected to be used
+    /// on struct fields in conjunction with serde's `skip_serializing_if = Option::is_none`
+    /// attribute. Adding `#[api_body(optional)]` on a field when using the `ApiBody` macro
+    /// emits this, as well as the corresponding serde attribute.
     Optional {
         /// The type that is optional.
         value: Box<ApiBodyInfo>,
@@ -100,7 +102,7 @@ pub enum ApiBodyType {
 }
 
 /// Any type that implements this trait can be described in terms of [`ApiBodyInfo`], and
-/// can potentially also be serialized or deserizlied from JSON.
+/// can potentially also be serialized or deserialized from JSON.
 ///
 /// This type should not be manually implemented in most cases; instead the [`ApiBody`](seamless_macros::ApiBody)
 /// macro should be relied on to ensure that the description and shape of the type are consistent with how
@@ -110,44 +112,12 @@ pub enum ApiBodyType {
 pub trait ApiBody {
     /// This returns information about the shape of the type and description of parts of it.
     fn api_body_info() -> ApiBodyInfo;
-
-    /// Serialize the type to JSON.
-    fn to_json_vec(&self) -> Vec<u8>
-    where
-        Self: ::serde::Serialize,
-    {
-        serde_json::to_vec(self)
-            .expect("Failed to serialize to JSON due to an invalid manual implementation (1)")
-    }
-
-    /// Serialize the type to a [`serde_json::Value`].
-    fn to_json_value(&self) -> serde_json::Value
-    where
-        Self: ::serde::Serialize,
-    {
-        serde_json::to_value(self)
-            .expect("Failed to serialize to JSON due to an invalid manual implementation (2)")
-    }
-
-    /// Deserialize from bytes containing a JSON value.
-    fn from_json_slice(bytes: &[u8]) -> serde_json::Result<Self>
-    where
-        Self: ::serde::de::DeserializeOwned,
-    {
-        serde_json::from_slice(bytes)
-    }
-
-    /// Deserialize from a [`serde_json::Value`].
-    fn from_json_value(value: serde_json::Value) -> serde_json::Result<Self>
-    where
-        Self: ::serde::de::DeserializeOwned,
-    {
-        serde_json::from_value(value)
-    }
 }
 
-/// This trait is implemented for all struct types, so that we know, at compile time,
-/// whether we're working with a struct type that can be flattened or not.
+/// The ApiBody macro implements this trait for all struct types, so that we can properly
+/// flatten enums or newtypes containing a single struct type.
+///
+/// This is not meant to be used by hand.
 #[doc(hidden)]
 pub trait ApiBodyStruct {
     fn api_body_struct_info() -> ApiBodyStructInfo;
@@ -189,20 +159,43 @@ impl<T: ApiBody> ApiBody for HashMap<String, T> {
         }
     }
 }
+
+// Serde serializes `None` as `null`, so the Option type is `T | null`.
 impl<T: ApiBody> ApiBody for Option<T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),
-            ty: ApiBodyType::Optional {
-                value: Box::new(T::api_body_info()),
+            ty: ApiBodyType::OneOf {
+                values: vec![T::api_body_info(), <()>::api_body_info()],
             },
         }
     }
 }
 
+/// The [`ApiBody`](seamless_macros::ApiBody) macro uses this for fields marked with
+/// `#[api_body(optional)]`, to get at the inner type of an Option, and confirm that
+/// the field is indeed an Option.
+///
+/// This is not meant to be used by hand.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`#[api_body(optional)]` can only be used on fields of type `Option<T>`",
+    label = "`{Self}` is not an `Option`"
+)]
+pub trait OptionalField {
+    type Inner: ApiBody;
+    fn is_none(&self) -> bool;
+}
+impl<T: ApiBody> OptionalField for Option<T> {
+    type Inner = T;
+    fn is_none(&self) -> bool {
+        Option::is_none(self)
+    }
+}
+
 // Primitives:
 macro_rules! impl_api_body {
-    ( $( $($name:path),+ => $ty:expr ),+ ) => (
+    ( $( $($name:ty),+ => $ty:expr );+ ) => (
         $($(
             impl ApiBody for $name {
                 fn api_body_info() -> ApiBodyInfo {
@@ -228,30 +221,16 @@ impl_api_body! {
     std::sync::atomic::AtomicU16,
     std::sync::atomic::AtomicU32,
     std::sync::atomic::AtomicU64,
-    serde_json::Number,
-    std::sync::atomic::AtomicUsize => ApiBodyType::Number,
+    std::sync::atomic::AtomicUsize,
+    serde_json::Number => ApiBodyType::Number;
     bool,
-    std::sync::atomic::AtomicBool => ApiBodyType::Boolean,
-    String => ApiBodyType::String
-}
-impl ApiBody for &str {
-    fn api_body_info() -> ApiBodyInfo {
-        ApiBodyInfo {
-            description: String::new(),
-            ty: ApiBodyType::String,
-        }
-    }
+    std::sync::atomic::AtomicBool => ApiBodyType::Boolean;
+    String, &str => ApiBodyType::String;
+    () => ApiBodyType::Null;
+    serde_json::Value => ApiBodyType::Any
 }
 
 // Tuples:
-impl ApiBody for () {
-    fn api_body_info() -> ApiBodyInfo {
-        ApiBodyInfo {
-            description: String::new(),
-            ty: ApiBodyType::Null,
-        }
-    }
-}
 macro_rules! impl_api_body_tuples {
     ( $( $( $name:ident )+ ),+ ) => (
         $(
@@ -279,15 +258,6 @@ impl_api_body_tuples! {
     A B C D E F G H,
     A B C D E F G H I,
     A B C D E F G H I J
-}
-
-impl ApiBody for serde_json::Value {
-    fn api_body_info() -> ApiBodyInfo {
-        ApiBodyInfo {
-            description: String::new(),
-            ty: ApiBodyType::Any,
-        }
-    }
 }
 
 impl<T: ApiBody> ApiBody for serde_json::Map<String, T> {

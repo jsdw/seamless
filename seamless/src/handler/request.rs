@@ -5,11 +5,11 @@ provided as a request body, but this module provides a `Bytes` struct which can 
 [`Vec<u8>`] or [`futures::Stream`] into such a body.
 */
 use futures::{
-    io::{AsyncRead, Cursor},
     Stream, TryStreamExt,
+    io::{AsyncRead, Cursor},
 };
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, ready};
 
 /// Any valid body will implement this trait
 pub trait AsyncReadBody: AsyncRead + Send + Unpin {}
@@ -30,7 +30,7 @@ enum BytesVariant {
 
 impl std::fmt::Debug for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("ByteStream").finish()
+        f.debug_tuple("Bytes").finish()
     }
 }
 
@@ -40,16 +40,10 @@ impl AsyncRead for Bytes {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
-        // If Bytes is pinned, the enum variant is also pinned, so here
-        // we just want to convert a Pin<&mut Bytes> into the relevant variant
-        // to poll it. Very much the same sort of idea as:
-        //
-        // https://github.com/rust-lang/futures-rs/blob/0.3.0-alpha.12/futures-core/src/stream/mod.rs#L88-L102
-        unsafe {
-            match &mut Pin::get_unchecked_mut(self).variant {
-                BytesVariant::FromVec(v) => Pin::new_unchecked(v).poll_read(cx, buf),
-                BytesVariant::FromReader(r) => Pin::new_unchecked(r).poll_read(cx, buf),
-            }
+        // Both variants are Unpin, so Bytes is too.
+        match &mut self.get_mut().variant {
+            BytesVariant::FromVec(v) => Pin::new(v).poll_read(cx, buf),
+            BytesVariant::FromReader(r) => Pin::new(r).poll_read(cx, buf),
         }
     }
 }
@@ -76,22 +70,73 @@ impl Bytes {
         }
     }
     /// Turn a thing implementing [`futures::Stream`] into [`Bytes`].
-    pub fn from_stream<S: Stream<Item = std::io::Result<Vec<u8>>> + 'static + Send + Unpin>(
-        stream: S,
-    ) -> Bytes {
+    pub fn from_stream<S>(stream: S) -> Bytes
+    where
+        S: Stream<Item = std::io::Result<Vec<u8>>> + Send + Unpin + 'static,
+    {
         Bytes {
             variant: BytesVariant::FromReader(Box::new(stream.into_async_read())),
         }
     }
 }
 
+/// This wraps other `AsyncRead` impls and caps how many bytes can be
+/// read from the underlying reader before an `UnexpectedEof` error is
+/// returned. The cap exists at the type level via `const MAX`.
+pub(crate) struct CappedAsyncRead<T, const MAX: usize> {
+    inner: T,
+    bytes_read: usize,
+}
+
+/// The error handed back when the size limit is hit for some request.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CappedSizeLimitError;
+impl std::error::Error for CappedSizeLimitError {}
+impl std::fmt::Display for CappedSizeLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Size limit exceeded")
+    }
+}
+
+impl<T: AsyncRead + Unpin, const MAX: usize> AsyncRead for CappedAsyncRead<T, MAX> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        let new_bytes_read = ready!(Pin::new(&mut this.inner).poll_read(cx, buf))?;
+
+        // Bail if we've read more bytes than our limit allows:
+        this.bytes_read += new_bytes_read;
+        if this.bytes_read > MAX {
+            return Poll::Ready(Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                CappedSizeLimitError,
+            )));
+        }
+
+        // Return the number of bytes written on this run:
+        Poll::Ready(Ok(new_bytes_read))
+    }
+}
+
+impl<T, const MAX: usize> CappedAsyncRead<T, MAX> {
+    pub fn new(read: T) -> CappedAsyncRead<T, MAX> {
+        CappedAsyncRead {
+            inner: read,
+            bytes_read: 0,
+        }
+    }
+}
+
 #[cfg(test)]
-mod test_bytes {
+mod tests {
     use super::*;
     use futures::AsyncReadExt;
 
     #[tokio::test]
-    async fn can_read_from_vec() {
+    async fn bytes_can_read_from_vec() {
         let mut bytes = Bytes::from_vec(vec![1, 2, 3, 4, 5]);
 
         let mut output = vec![];
@@ -105,7 +150,7 @@ mod test_bytes {
     }
 
     #[tokio::test]
-    async fn can_read_from_reader() {
+    async fn bytes_can_read_from_reader() {
         // We use another instance of Bytes as our reader:
         let mut bytes = Bytes::from_reader(Bytes::from_vec(vec![1, 2, 3, 4, 5]));
 
@@ -120,7 +165,7 @@ mod test_bytes {
     }
 
     #[tokio::test]
-    async fn can_read_from_stream() {
+    async fn bytes_can_read_from_stream() {
         let mut bytes = Bytes::from_stream(futures::stream::iter(vec![
             Ok(vec![1]),
             Ok(vec![2]),
@@ -138,61 +183,6 @@ mod test_bytes {
         assert_eq!(n, 5);
         assert_eq!(output, vec![1, 2, 3, 4, 5]);
     }
-}
-
-/// This wraps other `AsyncRead` impls and caps how many bytes can be
-/// read from the underlying reader before an `UnexpectedEof` error is
-/// returned. The cap exists at the type level via `const MAX`.
-pub(crate) struct CappedAsyncRead<T: AsyncRead, const MAX: usize> {
-    inner: T,
-    bytes_read: usize,
-}
-
-impl<T: AsyncRead, const MAX: usize> AsyncRead for CappedAsyncRead<T, MAX> {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
-        // Structural projection; Pin<CappedAsyncRead> to Pin<T>. Must not access the field in any other way.
-        let inner = unsafe { self.as_mut().map_unchecked_mut(|lr| &mut lr.inner) };
-
-        // Read some bytes into the provided buffer:
-        let new_bytes_read = match inner.poll_read(cx, buf) {
-            Poll::Ready(Ok(n)) => n,
-            Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
-            Poll::Pending => return Poll::Pending,
-        };
-
-        // Bail if we've read more bytes than our limit allows. Non-structural projection here;
-        // Pin<CappedAsyncRead> to &mut usize.
-        let bytes_read = unsafe { &mut self.as_mut().get_unchecked_mut().bytes_read };
-        *bytes_read += new_bytes_read;
-        if *bytes_read > MAX {
-            return Poll::Ready(Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "Size limit exceeded",
-            )));
-        }
-
-        // Return the number of bytes written on this run:
-        Poll::Ready(Ok(new_bytes_read))
-    }
-}
-
-impl<T: AsyncRead, const MAX: usize> CappedAsyncRead<T, MAX> {
-    pub fn new(read: T) -> CappedAsyncRead<T, MAX> {
-        CappedAsyncRead {
-            inner: read,
-            bytes_read: 0,
-        }
-    }
-}
-
-#[cfg(test)]
-mod test_capped_reader {
-    use super::*;
-    use futures::AsyncReadExt;
 
     #[tokio::test]
     async fn capped_reader_ok_with_0_bytes() {

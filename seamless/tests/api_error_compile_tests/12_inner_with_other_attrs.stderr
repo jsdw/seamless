@@ -1,0 +1,5 @@
+error: 'inner' does not make sense alongside any other attributes
+  --> tests/api_error_compile_tests/12_inner_with_other_attrs.rs:13:17
+   |
+13 |     #[api_error(inner, code = 400)]
+   |                 ^^^^^

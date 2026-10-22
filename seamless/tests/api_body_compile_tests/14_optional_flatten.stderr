@@ -1,0 +1,6 @@
+error: the `optional` and `flatten` attrs cannot be used together
+ --> tests/api_body_compile_tests/14_optional_flatten.rs:3:5
+  |
+3 | /     #[api_body(flatten, optional)]
+4 | |     bar: Option<Bar>,
+  | |____________________^

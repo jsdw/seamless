@@ -1,0 +1,5 @@
+error: #[api_body(optional)] can only be used on named fields
+ --> tests/api_body_compile_tests/13_optional_unnamed.rs:2:12
+  |
+2 | struct Foo(#[api_body(optional)] Option<usize>, bool);
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

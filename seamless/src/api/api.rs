@@ -1,7 +1,9 @@
 use super::error::ApiError;
 use super::info::ApiBodyInfo;
-use crate::handler::{request::AsyncReadBody, Handler, IntoHandler};
-use http::{method::Method, Request, Response};
+use crate::handler::{
+    Handler, IntoHandler, request::AsyncReadBody, response::Body as ResponseBody,
+};
+use http::{Method, Request, Response};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -10,13 +12,13 @@ use std::collections::HashMap;
 /// using [`Self::info()`], or handle an [`http::Request`] using [`Self::handle()`].
 pub struct Api {
     base_path: String,
-    routes: HashMap<(Method, String), ResolvedApiRoute>,
+    routes: HashMap<(Method, String), Route>,
 }
 
-// An API route has the contents of `ResolvedHandler` but also a description.
-struct ResolvedApiRoute {
+// A route's handler, along with its description.
+struct Route {
     description: String,
-    resolved_handler: Handler,
+    handler: Handler,
 }
 
 impl Default for Api {
@@ -38,8 +40,11 @@ impl Api {
     /// the path "hi" is added, then an incoming [`http::Request`] with the path
     /// `"/foo/bar/hi"` will match it.
     pub fn new_with_base_path<S: Into<String>>(base_path: S) -> Api {
+        // Store without leading or trailing slashes so that it's ready to
+        // be matched against request paths in `handle`.
+        let base_path = base_path.into().trim_matches('/').to_owned();
         Api {
-            base_path: base_path.into(),
+            base_path,
             routes: HashMap::new(),
         }
     }
@@ -47,6 +52,9 @@ impl Api {
     /// Add a new route to the API. You must provide a path to make this route available at,
     /// and are given back a [`RouteBuilder`] which can be used to give the route a handler
     /// and a description.
+    ///
+    /// If you add a route at the same path and requiring the same method as an existing route,
+    /// the existing route will be silently overwritten.
     ///
     /// # Examples
     ///
@@ -74,76 +82,85 @@ impl Api {
     }
 
     // Add a route given the individual parts (for internal use)
-    fn add_parts<A, P: Into<String>, HandlerFn: IntoHandler<A>>(
+    fn add_parts<A, HandlerFn: IntoHandler<A>>(
         &mut self,
-        path: P,
+        path: String,
         description: String,
         handler_fn: HandlerFn,
     ) {
-        let resolved_handler = handler_fn.into_handler();
-        let mut path: String = path.into();
-        path = path.trim_matches('/').to_owned();
+        let handler = handler_fn.into_handler();
+        let path = path.trim_matches('/').to_owned();
         self.routes.insert(
-            (resolved_handler.method.clone(), path),
-            ResolvedApiRoute {
+            (handler.method.clone(), path),
+            Route {
                 description,
-                resolved_handler,
+                handler,
             },
         );
     }
 
     /// Match an incoming [`http::Request`] against our API routes and run the relevant handler if a
-    /// matching one is found. We'll get back bytes representing a JSON response back if all goes ok,
-    /// else we'll get back a [`RouteError`], which will either be [`RouteError::NotFound`] if no matching
-    /// route was found, or a [`RouteError::Err`] if a matching route was found, but that handler emitted
-    /// an error.
+    /// matching one is found. We'll get back an [`http::Response`] whose body is a
+    /// [`crate::handler::response::Body`] if all goes ok, else we'll get back a [`RouteError`],
+    /// which will either be [`RouteError::NotFound`] if no matching route was found, or a
+    /// [`RouteError::Err`] if a matching route was found, but that handler emitted an error.
+    #[allow(clippy::result_large_err)]
     pub async fn handle<Body: AsyncReadBody>(
         &self,
         req: Request<Body>,
-    ) -> Result<Response<Vec<u8>>, RouteError<Body, ApiError>> {
-        let base_path = &self.base_path.trim_start_matches('/');
-        let req_path = req.uri().path().trim_start_matches('/');
+    ) -> Result<Response<ResponseBody>, RouteError<Body, ApiError>> {
+        let Some(route) = self.find_route(&req) else {
+            return Err(RouteError::NotFound(req));
+        };
 
-        if let Some(req_path_tail) = req_path.strip_prefix(base_path) {
-            // Ensure that the method and path suffix lines up as expected:
-            let req_method = req.method().into();
-            let req_path_tail = req_path_tail
-                .trim_start_matches('/')
-                .to_owned();
+        // Handlers take the body as a `&mut dyn AsyncReadBody`:
+        let (parts, mut body) = req.into_parts();
+        let req = Request::from_parts(parts, &mut body as &mut dyn AsyncReadBody);
 
-            // Turn req body into &mut dyn AsyncReadBody:
-            let (req_parts, mut req_body) = req.into_parts();
-            let dyn_req = Request::from_parts(req_parts, &mut req_body as &mut dyn AsyncReadBody);
+        route.handler.call(req).await.map_err(RouteError::Err)
+    }
 
-            if let Some(route) = self.routes.get(&(req_method, req_path_tail)) {
-                (route.resolved_handler.handler)(dyn_req)
-                    .await
-                    .map_err(RouteError::Err)
-            } else {
-                let (req_parts, _) = dyn_req.into_parts();
-                Err(RouteError::NotFound(Request::from_parts(
-                    req_parts, req_body,
-                )))
-            }
-        } else {
-            Err(RouteError::NotFound(req))
-        }
+    /// Find the route matching the request's method and path, if there is one.
+    fn find_route<Body>(&self, req: &Request<Body>) -> Option<&Route> {
+        let path = req.uri().path().trim_start_matches('/');
+        let path = strip_path_prefix(path, &self.base_path)?.trim_start_matches('/');
+        self.routes.get(&(req.method().clone(), path.to_owned()))
     }
 
     /// Return information about the API routes that have been defined so far.
+    /// Routes are currently sorted by name and then by method, but this order may change.
     pub fn info(&self) -> Vec<RouteInfo> {
-        let mut info = vec![];
-        for ((_method, key), val) in &self.routes {
-            info.push(RouteInfo {
-                name: key.to_owned(),
-                method: format!("{}", &val.resolved_handler.method),
-                description: val.description.clone(),
-                request_type: val.resolved_handler.request_type.clone(),
-                response_type: val.resolved_handler.response_type.clone(),
-            });
-        }
-        info.sort_by(|a, b| a.name.cmp(&b.name));
+        let mut info: Vec<RouteInfo> = self
+            .routes
+            .iter()
+            .map(|((method, path), route)| RouteInfo {
+                name: path.clone(),
+                method: method.to_string(),
+                description: route.description.clone(),
+                request_type: route.handler.request_type.clone(),
+                response_type: route.handler.response_type.clone(),
+            })
+            .collect();
+        // Sort by name, then by method, so that routes sharing a path come out
+        // in a stable order rather than in `HashMap` iteration order.
+        info.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.method.cmp(&b.method)));
         info
+    }
+}
+
+/// Strip `prefix` from the start of `path`, but only if it matches whole path
+/// segments. Neither argument should have a leading slash, and `prefix` should
+/// have no trailing slash. For example, with a prefix of `"api"`, the paths
+/// `"api"` and `"api/foo"` match, but `"apiv2/foo"` does not.
+fn strip_path_prefix<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+    if prefix.is_empty() {
+        return Some(path);
+    }
+    let tail = path.strip_prefix(prefix)?;
+    if tail.is_empty() || tail.starts_with('/') {
+        Some(tail)
+    } else {
+        None
     }
 }
 
@@ -175,6 +192,7 @@ pub struct RouteBuilder<'a> {
     path: String,
     description: String,
 }
+
 impl<'a> RouteBuilder<'a> {
     fn new(api: &'a mut Api, path: String) -> Self {
         RouteBuilder {
@@ -183,11 +201,13 @@ impl<'a> RouteBuilder<'a> {
             description: String::new(),
         }
     }
+
     /// Add a description to the API route.
     pub fn description<S: Into<String>>(mut self, desc: S) -> Self {
         self.description = desc.into();
         self
     }
+
     /// Add a handler to the API route. Until this has been added, the route
     /// doesn't "exist".
     pub fn handler<A, HandlerFn: IntoHandler<A>>(self, handler: HandlerFn) {
@@ -217,7 +237,7 @@ impl<B, E: std::fmt::Debug> std::fmt::Debug for RouteError<B, E> {
 
 impl<B, E> RouteError<B, E> {
     /// Assume that the `RouteError` contains an error and attempt to
-    /// unwrap this
+    /// unwrap it.
     ///
     /// # Panics
     ///
@@ -225,7 +245,7 @@ impl<B, E> RouteError<B, E> {
     pub fn unwrap_err(self) -> E {
         match self {
             RouteError::Err(e) => e,
-            _ => panic!("Attempt to unwrap_api_err on RouteError that is NotFound"),
+            _ => panic!("Attempt to unwrap_err on RouteError that is NotFound"),
         }
     }
 }

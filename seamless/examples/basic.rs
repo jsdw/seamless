@@ -5,13 +5,13 @@
 use seamless::{
     api::{Api, ApiBody, ApiError},
     handler::{
-        body::{Capped, FromJson, IntoBody},
+        body::{Capped, FromJson},
         request::Bytes,
         response::ToJson,
     },
     http::Request,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[tokio::main]
 async fn main() {
@@ -28,9 +28,11 @@ async fn main() {
         .description("Reverse an array of numbers")
         // We cap the request body to 8kb (8 * 1024 bytes) by wrapping it in
         // our 'Capped' type:
-        .handler(|body: Capped<FromJson<Vec<usize>>, { 8 * 1024 }>| {
-            ToJson(body.into_body().into_iter().rev().collect::<Vec<usize>>())
-        });
+        .handler(
+            |Capped(FromJson(body)): Capped<FromJson<Vec<usize>>, { 8 * 1024 }>| {
+                ToJson(body.into_iter().rev().collect::<Vec<usize>>())
+            },
+        );
 
     // This route uses custom types (see below):
     api.add("meta/status")
@@ -52,8 +54,15 @@ async fn main() {
             serde_json::to_vec(&BinaryInput { a: 20, b: 10 }).unwrap(),
         ))
         .unwrap();
-    let actual: Value =
-        serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
+    let body = api
+        .handle(req)
+        .await
+        .unwrap()
+        .into_body()
+        .into_vec()
+        .await
+        .unwrap();
+    let actual: Value = serde_json::from_slice(&body).unwrap();
     let expected = serde_json::to_value(json!({ "a": 20, "b": 10, "result": 2 })).unwrap();
     assert_eq!(actual, expected);
 
@@ -79,8 +88,15 @@ async fn main() {
         .header("content-type", "application/json")
         .body(Bytes::from_vec(Vec::new()))
         .unwrap();
-    let actual: Value =
-        serde_json::from_slice(&api.handle(req).await.unwrap().into_body()).unwrap();
+    let body = api
+        .handle(req)
+        .await
+        .unwrap()
+        .into_body()
+        .into_vec()
+        .await
+        .unwrap();
+    let actual: Value = serde_json::from_slice(&body).unwrap();
     let expected = serde_json::to_value(json!({ "status": "Ok" })).unwrap();
     assert_eq!(actual, expected);
 }

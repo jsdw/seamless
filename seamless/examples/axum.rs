@@ -4,22 +4,26 @@
 //!
 //! curl localhost:8000/api/echo -H 'content-type: application/json' -d '"hello"'
 //! curl localhost:8000/api/reverse -H 'content-type: application/json' -d '[1,2,3,4,5]'
+//! curl localhost:8000/api/count
 //!
 //! To see the API in action.
 use axum::{
+    Router,
     body::Body,
     extract::State,
     routing::{any, get},
-    Router,
 };
 use futures::StreamExt;
 use http::{Request, Response};
 use seamless::{
     api::{Api, RouteError},
-    handler::{body::FromJson, request::Bytes as RequestBytes, response::ToJson},
+    handler::{
+        body::FromJson,
+        request::Bytes as RequestBytes,
+        response::{ToBinary, ToJson},
+    },
 };
 use std::sync::Arc;
-use std::usize;
 
 #[tokio::main]
 async fn main() {
@@ -35,6 +39,16 @@ async fn main() {
         .description("Reverse an array of numbers")
         .handler(|body: FromJson<Vec<usize>>| {
             ToJson(body.0.into_iter().rev().collect::<Vec<usize>>())
+        });
+    seamless_api
+        .add("/api/count")
+        .description("Stream back the numbers 1 to 100,000, one per line")
+        .handler(|| {
+            // This response is streamed back to the client one chunk at a time
+            // rather than being built up in memory first.
+            let lines = futures::stream::iter(1..=100_000)
+                .map(|n| Ok::<_, std::io::Error>(format!("{n}\n")));
+            ToBinary::stream(lines).content_type("text/plain")
         });
 
     // The API can hand back information about itself if we want:
@@ -72,7 +86,7 @@ async fn seamless_to_axum(state: State<Arc<Api>>, request: Request<Body>) -> Res
     // preserving the streaming.
     let body_stream = body.into_data_stream().map(|bytes| match bytes {
         Ok(bytes) => Ok(bytes.to_vec()),
-        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        Err(e) => Err(std::io::Error::other(e)),
     });
 
     let body = RequestBytes::from_stream(body_stream);
@@ -88,8 +102,13 @@ async fn seamless_to_axum(state: State<Arc<Api>>, request: Request<Body>) -> Res
                 .unwrap(),
         },
         |res| {
-            let (parts, body_bytes) = res.into_parts();
-            Response::from_parts(parts, Body::from(body_bytes))
+            // Hand complete bodies over as-is, and stream the rest.
+            let (parts, body) = res.into_parts();
+            let body = match body.into_bytes() {
+                Ok(bytes) => Body::from(bytes),
+                Err(body) => Body::from_stream(body.into_stream()),
+            };
+            Response::from_parts(parts, body)
         },
     )
 }

@@ -13,9 +13,9 @@ pub trait ToAsync<Res, A> {
 
 #[doc(hidden)]
 pub struct Async;
-impl<Res, F> ToAsync<Res, Async> for F
+impl<T, F> ToAsync<T, Async> for F
 where
-    F: Future<Output = Res> + Send + 'static,
+    F: Future<Output = T> + Send + 'static,
 {
     type Output = F;
     fn to_async(self) -> Self::Output {
@@ -25,14 +25,14 @@ where
 
 #[doc(hidden)]
 pub struct Sync;
-impl<Res> ToAsync<Res, Sync> for Res
+impl<T> ToAsync<T, Sync> for T
 where
-    // Res has to be constrained to be HandlerResponse
+    // T has to be constrained to be HandlerResponse
     // only so that no output can potentially implement both
     // the Sync and Async version of the trait.
-    Res: Send + 'static + HandlerResponse,
+    T: Send + 'static + HandlerResponse,
 {
-    type Output = Pin<Box<dyn Future<Output = Res> + Send + 'static>>;
+    type Output = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
     fn to_async(self) -> Self::Output {
         Box::pin(async move { self })
     }

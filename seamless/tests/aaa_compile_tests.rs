@@ -20,6 +20,12 @@ fn compile_tests() {
 
     t.compile_fail("tests/api_body_compile_tests/11_enum_cant_mix_unit_named.rs");
 
+    t.compile_fail("tests/api_body_compile_tests/12_optional_not_option.rs");
+    t.compile_fail("tests/api_body_compile_tests/13_optional_unnamed.rs");
+    t.compile_fail("tests/api_body_compile_tests/14_optional_flatten.rs");
+    t.compile_fail("tests/api_body_compile_tests/15_enum_flatten.rs");
+    t.pass("tests/api_body_compile_tests/16_optional_alias.rs");
+
     /* api_error */
 
     // Structs
@@ -36,4 +42,5 @@ fn compile_tests() {
     t.pass("tests/api_error_compile_tests/09_enum_toplevel_attrs.rs");
     t.pass("tests/api_error_compile_tests/10_enum_fields.rs");
     t.compile_fail("tests/api_error_compile_tests/11_enum_empty.rs");
+    t.compile_fail("tests/api_error_compile_tests/12_inner_with_other_attrs.rs");
 }

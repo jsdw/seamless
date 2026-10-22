@@ -7,5 +7,5 @@ enum Foo {
 
 fn main() {
     // This should fail to compile because deserialize not implemented
-    let f = Foo::Bar{ n: 10 }.to_json_value();
+    let f = serde_json::to_string(&Foo::Bar{ n: 10 });
 }

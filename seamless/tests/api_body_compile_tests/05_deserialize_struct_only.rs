@@ -7,5 +7,5 @@ struct Foo {
 
 fn main() {
     // This should fail to compile because serialize not implemented
-    let f = Foo { hello: 10 }.to_json_value();
+    let _f = serde_json::to_string(&Foo { hello: 10 }).unwrap();
 }

@@ -1,19 +1,19 @@
 error[E0277]: the trait bound `Foo: serde::de::DeserializeOwned` is not satisfied
   --> tests/api_body_compile_tests/07_serialize_enum_only.rs:11:18
    |
-11 |       let f: Foo = ApiBody::from_json_value(json!({
+11 |       let f: Foo = serde_json::from_value(json!({
    |  __________________^
 12 | |         "kind": "Bar",
 13 | |         "n": 10
 14 | |     })).unwrap();
    | |_______^ unsatisfied trait bound
    |
-help: the trait `for<'de> seamless::serde::Deserialize<'de>` is not implemented for `Foo`
+help: the trait `for<'de> seamless::serde::de::Deserialize<'de>` is not implemented for `Foo`
   --> tests/api_body_compile_tests/07_serialize_enum_only.rs:5:1
    |
  5 | enum Foo {
    | ^^^^^^^^
-   = help: the following other types implement trait `seamless::serde::Deserialize<'de>`:
+   = help: the following other types implement trait `seamless::serde::de::Deserialize<'de>`:
              &'a Path
              &'a RawValue
              &'a [u8]
@@ -24,10 +24,11 @@ help: the trait `for<'de> seamless::serde::Deserialize<'de>` is not implemented 
              (T0, T1, T2)
            and $N others
    = note: required for `Foo` to implement `seamless::serde::de::DeserializeOwned`
-note: required by a bound in `from_json_value`
-  --> src/api/info.rs
+note: required by a bound in `from_value`
+  --> $CARGO/serde_json-$VERSION/src/value/mod.rs
    |
-   |     fn from_json_value(value: serde_json::Value) -> serde_json::Result<Self>
-   |        --------------- required by a bound in this associated function
-   |     where Self: ::serde::de::DeserializeOwned {
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `ApiBody::from_json_value`
+   | pub fn from_value<T>(value: Value) -> Result<T, Error>
+   |        ---------- required by a bound in this function
+   | where
+   |     T: DeserializeOwned,
+   |        ^^^^^^^^^^^^^^^^ required by this bound in `from_value`

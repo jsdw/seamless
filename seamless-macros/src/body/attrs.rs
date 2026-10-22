@@ -1,17 +1,15 @@
+#[derive(Default)]
 pub struct Props {
     pub docs: String,
     pub tag: Option<String>,
     pub flatten: bool,
+    pub optional: bool,
 }
 
-pub static NAME: &str = "api_body";
+pub const NAME: &str = "api_body";
 
 pub fn parse(attrs: &[syn::Attribute]) -> syn::Result<Props> {
-    let mut props = Props {
-        docs: String::new(),
-        tag: None,
-        flatten: false,
-    };
+    let mut props = Props::default();
 
     for attr in attrs {
         // If the attr is serde based, error! not allowed
@@ -30,7 +28,7 @@ pub fn parse(attrs: &[syn::Attribute]) -> syn::Result<Props> {
             props.docs.push_str(&doc);
         }
 
-        // Ignore attrs we don't care about and copy them for output
+        // Ignore attrs that aren't ours:
         if !attr.path().is_ident(NAME) {
             continue;
         }
@@ -43,6 +41,8 @@ pub fn parse(attrs: &[syn::Attribute]) -> syn::Result<Props> {
                 props.tag = Some(lit_string(&value?.parse()?)?);
             } else if path.is_ident("flatten") {
                 props.flatten = true;
+            } else if path.is_ident("optional") {
+                props.optional = true;
             } else {
                 return Err(syn::Error::new_spanned(path, "unrecognized attribute"));
             }

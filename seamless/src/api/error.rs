@@ -13,9 +13,24 @@ pub struct ApiError {
 }
 
 impl ApiError {
-    // Try to keep this the same as seamless-macros::api_error's version:
+    // Also used as the default external message by the ApiError macro:
     #[doc(hidden)]
     pub const SERVER_ERROR: &'static str = "Internal server error";
+
+    /// An error whose message is used as both the internal and the external message.
+    ///
+    /// **Note:** the message will be shown to API consumers, so be careful not to include
+    /// anything sensitive in it. Use [`ApiError::server_error()`] for errors that should
+    /// only be seen internally.
+    pub fn external(code: u16, msg: impl Into<String>) -> ApiError {
+        let msg = msg.into();
+        ApiError {
+            code,
+            internal_message: msg.clone(),
+            external_message: msg,
+            value: None,
+        }
+    }
 
     /// A helper to instantiate a server error.
     pub fn server_error<S: Into<String>>(msg: S) -> ApiError {
@@ -29,28 +44,17 @@ impl ApiError {
 
     /// A helper to instantiate a 404 not found error.
     pub fn path_not_found() -> ApiError {
-        ApiError {
-            code: 404,
-            internal_message: "Not found".to_owned(),
-            external_message: "Not found".to_owned(),
-            value: None,
-        }
+        ApiError::external(404, "Not found")
     }
 
     /// A helper to instantiate a not authorized error.
     pub fn not_authorized(reason: &str) -> ApiError {
-        let msg = format!("Not Authorized: {}", reason);
-        ApiError {
-            code: 403,
-            external_message: msg.clone(),
-            internal_message: msg,
-            value: None,
-        }
+        ApiError::external(403, format!("Not Authorized: {reason}"))
     }
 }
 
 impl From<std::convert::Infallible> for ApiError {
-    fn from(_: std::convert::Infallible) -> ApiError {
-        unreachable!()
+    fn from(never: std::convert::Infallible) -> ApiError {
+        match never {}
     }
 }

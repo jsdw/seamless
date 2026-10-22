@@ -19,4 +19,4 @@ pub use seamless_macros::{ApiBody, ApiError};
 // These are used in seamless_macros but are not expected to
 // be made use of elsewhere and so are hidden from the docs:
 #[doc(hidden)]
-pub use info::{ApiBodyStruct, ApiBodyStructInfo};
+pub use info::{ApiBodyStruct, ApiBodyStructInfo, OptionalField};
