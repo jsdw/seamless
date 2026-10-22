@@ -406,7 +406,7 @@ checksum = "7b4b9743ed687d4b4bcedf9ff5eaa7398495ae14e61cba0a295704edbc7decde"
 
 [[package]]
 name = "seamless"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "axum",
  "bytes",
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "seamless_macros"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "proc-macro2",
  "quote",
