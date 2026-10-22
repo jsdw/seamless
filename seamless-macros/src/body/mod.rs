@@ -3,12 +3,12 @@ mod fields;
 
 use fields::{Field, Fields};
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, quote_spanned};
 use syn::{ext::IdentExt, parse::Parser, punctuated::Punctuated};
 
-static CRATE_NAME_STR: &str = "seamless";
-static VARIANT_DESCRIPTION: &str = "Variant tag";
+const DEFAULT_TAG: &str = "kind";
+const VARIANT_DESCRIPTION: &str = "Variant tag";
 
 /// The name serde uses for this identifier on the wire. Raw identifiers
 /// lose their prefix, so `r#type` becomes `"type"`. Only use this for strings
@@ -24,193 +24,146 @@ pub struct Attrs {
 }
 
 pub fn parse_top_attrs(attrs: TokenStream) -> Attrs {
-    let attrs = Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated
+    let idents = Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated
         .parse(attrs)
         .expect("Invalid Api attributes provided");
 
-    // If Serialize or Deserialize attrs given, only
-    // do that one. If none given, do both.
-    let mut se = false;
-    let mut de = false;
-    for ident in attrs {
-        if ident == "Serialize" {
-            se = true
-        } else if ident == "Deserialize" {
-            de = true
-        }
-    }
-    if !se && !de {
-        se = true;
-        de = true;
+    // If Serialize or Deserialize attrs given, only do that one. If none given, do both.
+    let serialize = idents.iter().any(|ident| ident == "Serialize");
+    let deserialize = idents.iter().any(|ident| ident == "Deserialize");
+    if !serialize && !deserialize {
+        return Attrs {
+            serialize: true,
+            deserialize: true,
+        };
     }
 
     Attrs {
-        serialize: se,
-        deserialize: de,
+        serialize,
+        deserialize,
     }
 }
 
 pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
-    let crate_name: syn::Ident = syn::Ident::new(CRATE_NAME_STR, Span::call_site());
+    let api = crate::seamless_api();
     let ident = e.ident.clone();
 
-    let top_level_attr_props = attrs::parse(&e.attrs)?;
-    let serde_tag = top_level_attr_props.tag.unwrap_or("kind".to_owned());
-    let top_level_docs = top_level_attr_props.docs;
+    let top_level_props = attrs::parse(&e.attrs)?;
+    let serde_tag = top_level_props
+        .tag
+        .unwrap_or_else(|| DEFAULT_TAG.to_owned());
+    let top_level_docs = top_level_props.docs;
 
-    // Errors we can return during iteration:
-    let tuple_variants_not_allowed =
-        || syn::Error::new_spanned(&ident, "Enum tuple variants are not allowed");
-    let unit_and_nonunit_cant_be_mixed =
-        || syn::Error::new_spanned(&ident, "Unit enum fields can't be mixed with named fields");
+    // Enums with only unit variants are (de)serialized to plain strings, and other enums are
+    // tagged like { "kind": "Bar", ...otherfields }, so the two kinds of variant can't be mixed.
+    let is_unit = |variant: &syn::Variant| matches!(variant.fields, syn::Fields::Unit);
+    let all_unit = e.variants.iter().all(is_unit);
+    if !all_unit && e.variants.iter().any(is_unit) {
+        return Err(syn::Error::new_spanned(
+            &ident,
+            "Unit enum fields can't be mixed with named fields",
+        ));
+    }
 
-    // Iterate variants and generate the inner TypeScript impl for each:
-    let mut ts_impl_variants = vec![];
-    let mut seen_unit_fields = false;
-    let mut seen_nonunit_fields = false;
-    for variant in e.variants.iter() {
-        let variant_ident = &variant.ident;
-        let variant_ident_string = wire_name(variant_ident);
-        let attr_props = attrs::parse(&variant.attrs)?;
-        let variant_docs = attr_props.docs;
+    // Describe each variant:
+    let mut variant_infos = Vec::new();
+    for variant in &e.variants {
+        let variant_name = wire_name(&variant.ident);
+        let variant_docs = attrs::parse(&variant.attrs)?.docs;
 
-        // What fields does our enum have in it?
-        let token_stream = match Fields::from_syn(variant.fields.clone())? {
-            // Unnamed multiple fields aren't allowed because how do we tag
-            // them with an inner prop eg "kind": "bar".
-            Fields::Unnamed(..) => return Err(tuple_variants_not_allowed()),
-            // Unit fields (no values) can't live alongside other types; enums with _only_
-            // unit fields will be flattened, and enums with no unit fields will be tagged
-            // like { "kind": "Bar", ...otherfields }.
-            Fields::Unit => {
-                // Disallow unit + names variants living side by side
-                seen_unit_fields = true;
-                if seen_nonunit_fields {
-                    return Err(unit_and_nonunit_cant_be_mixed());
+        // The type of the tag field, eg "kind": "Bar":
+        let tag_info = quote! {
+            #api::ApiBodyInfo {
+                description: #VARIANT_DESCRIPTION.to_owned(),
+                ty: #api::ApiBodyType::StringLiteral { literal: #variant_name.to_owned() },
+            }
+        };
+
+        let variant_info = match Fields::from_syn(variant.fields.clone())? {
+            // Tuple variants aren't allowed, because how would we tag them with
+            // an inner prop eg "kind": "bar"?
+            Fields::Unnamed(..) => {
+                return Err(syn::Error::new_spanned(
+                    &ident,
+                    "Enum tuple variants are not allowed",
+                ));
+            }
+            // Unit variants are just the string literal:
+            Fields::Unit => quote! {
+                #api::ApiBodyInfo {
+                    description: #variant_docs.to_owned(),
+                    ty: #api::ApiBodyType::StringLiteral { literal: #variant_name.to_owned() },
                 }
-
+            },
+            // Single fields are treated like the inner struct, with our tag added to it.
+            // Only inner types that are structs are allowed.
+            Fields::Single(f) => {
+                let ty = &f.field.ty;
+                // If no variant docs, use the inner struct docs instead:
+                let description = if variant_docs.is_empty() {
+                    quote! { s.description }
+                } else {
+                    quote! { #variant_docs.to_owned() }
+                };
                 quote! {{
-                    ::#crate_name::api::ApiBodyInfo {
-                        description: #variant_docs.to_owned(),
-                        ty: ::#crate_name::api::ApiBodyType::StringLiteral{ literal: #variant_ident_string.to_owned() }
+                    let s = <#ty as #api::ApiBodyStruct>::api_body_struct_info();
+                    let mut keys = s.fields;
+                    keys.insert(#serde_tag.to_owned(), #tag_info);
+                    #api::ApiBodyInfo {
+                        description: #description,
+                        ty: #api::ApiBodyType::Object { keys },
                     }
                 }}
             }
-            // Single fields are treated like the inner version, but we need to remember
-            // to apply our tag to them too. Only inner types that are structs are allowed.
-            Fields::Single(f) => {
-                // Disallow unit + names variants living side by side
-                seen_nonunit_fields = true;
-                if seen_unit_fields {
-                    return Err(unit_and_nonunit_cant_be_mixed());
-                }
-
-                let ty = &f.field.ty;
-                quote! {{
-                    let mut s = <#ty as ::#crate_name::api::ApiBodyStruct>::api_body_struct_info();
-                    s.struc.insert(#serde_tag.to_owned(), ::#crate_name::api::ApiBodyInfo {
-                        description: #VARIANT_DESCRIPTION.to_owned(),
-                        ty: ::#crate_name::api::ApiBodyType::StringLiteral{ literal: #variant_ident_string.to_owned() }
-                    });
-                    let mut t = ::#crate_name::api::ApiBodyInfo {
-                        description: #variant_docs.to_owned(),
-                        ty: ::#crate_name::api::ApiBodyType::Object{ keys: s.struc }
-                    };
-                    // If no variant docs, use the inner struct docs instead:
-                    if t.description.len() == 0 { t.description = s.description }
-                    t
-                }}
-            }
-            // Named fields are merged with the variant tag:
+            // Named fields are merged with the tag:
             Fields::Named(fields) => {
-                // Disallow unit + names variants living side by side
-                seen_nonunit_fields = true;
-                if seen_unit_fields {
-                    return Err(unit_and_nonunit_cant_be_mixed());
-                }
-
-                // Generate impl for each field:
-                let entries = fields
-                    .iter()
-                    .map(|f| {
-                        let name = wire_name(f.field.ident.as_ref().unwrap());
-                        let f = quote_field(f);
-                        quote! { m.insert(#name.to_owned(), #f); }
-                    })
-                    .collect::<Vec<_>>();
-
-                // Generate a match arm for this variant:
+                let entries = fields.iter().map(|f| {
+                    let name = wire_name(f.field.ident.as_ref().unwrap());
+                    let info = quote_field(f);
+                    quote! { keys.insert(#name.to_owned(), #info); }
+                });
                 quote! {{
-                    let mut m = std::collections::HashMap::new();
-                    m.insert(#serde_tag.to_owned(), ::#crate_name::api::ApiBodyInfo {
-                        description: #VARIANT_DESCRIPTION.to_owned(),
-                        ty: ::#crate_name::api::ApiBodyType::StringLiteral{ literal: #variant_ident_string.to_owned() }
-                    });
+                    let mut keys = std::collections::HashMap::new();
+                    keys.insert(#serde_tag.to_owned(), #tag_info);
                     #(#entries)*
-                    ::#crate_name::api::ApiBodyInfo {
+                    #api::ApiBodyInfo {
                         description: #variant_docs.to_owned(),
-                        ty: ::#crate_name::api::ApiBodyType::Object{ keys: m }
+                        ty: #api::ApiBodyType::Object { keys },
                     }
                 }}
             }
         };
-        ts_impl_variants.push(token_stream);
+        variant_infos.push(variant_info);
     }
 
-    // Do we want to generate the serialize and deserialize impl?
-    let serialize_toks = if attrs.serialize {
-        quote! { #[derive(::#crate_name::serde::Serialize)] }
-    } else {
-        TokenStream2::new()
-    };
-    let deserialize_toks = if attrs.deserialize {
-        quote! { #[derive(::#crate_name::serde::Deserialize)] }
-    } else {
-        TokenStream2::new()
-    };
+    let serde_tag_attr = (!all_unit).then(|| quote! { #[serde(tag = #serde_tag)] });
 
-    // Do we want to tag our enum? We tag when all fields are named,
-    // and don't tag when all fields are unit. We shouldn't have a mix by here.
-    let serde_tag_attr = if seen_nonunit_fields {
-        quote! { #[serde(tag = #serde_tag)] }
-    } else {
-        TokenStream2::new()
-    };
-
-    // Replace our "api_body" attrs with corresponding serde attrs
-    let mut sanitized_e = e;
-    sanitized_e
-        .attrs
-        .retain(|attr| !attr.path().is_ident(attrs::NAME));
-    for variant in sanitized_e.variants.iter_mut() {
-        for field in variant.fields.iter_mut() {
-            let props = attrs::parse(&field.attrs)?;
-            if props.flatten {
-                let msg = "#[api_body(flatten)] can't be used on enum variant fields";
-                return Err(syn::Error::new_spanned(field, msg));
-            }
-            replace_with_serde_attrs(field, &props);
+    // Replace our "api_body" attrs with corresponding serde attrs:
+    let mut item = e;
+    item.attrs.retain(|attr| !attr.path().is_ident(attrs::NAME));
+    for field in item.variants.iter_mut().flat_map(|v| v.fields.iter_mut()) {
+        let props = attrs::parse(&field.attrs)?;
+        if props.flatten {
+            let msg = "#[api_body(flatten)] can't be used on enum variant fields";
+            return Err(syn::Error::new_spanned(field, msg));
         }
+        replace_with_serde_attrs(field, &props);
     }
 
-    // We tell serde where to look for its crate contents (otherwise it expects `serde::*`
-    // to exist, which it might not.)
-    let serde_crate_path = format!("::{}::serde", crate_name);
+    let serde_attrs = serde_attrs(&attrs);
 
     Ok(quote! {
-        #serialize_toks
-        #deserialize_toks
-        #[serde(crate = #serde_crate_path)]
+        #serde_attrs
         #serde_tag_attr
-        #sanitized_e
+        #item
 
-        impl ::#crate_name::api::ApiBody for #ident {
-            fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
-                ::#crate_name::api::ApiBodyInfo {
+        impl #api::ApiBody for #ident {
+            fn api_body_info() -> #api::ApiBodyInfo {
+                #api::ApiBodyInfo {
                     description: #top_level_docs.to_owned(),
-                    ty: ::#crate_name::api::ApiBodyType::OneOf{
-                        values:vec![ #(#ts_impl_variants),* ]
-                    }
+                    ty: #api::ApiBodyType::OneOf {
+                        values: vec![#(#variant_infos),*],
+                    },
                 }
             }
         }
@@ -218,148 +171,146 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
 }
 
 pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream2> {
-    let crate_name: syn::Ident = syn::Ident::new(CRATE_NAME_STR, Span::call_site());
-    let ident = s.ident.clone();
+    let api = crate::seamless_api();
+    let ident = &s.ident;
+    let docs = attrs::parse(&s.attrs)?.docs;
 
-    let top_level_attr_props = attrs::parse(&s.attrs)?;
-    let top_level_docs = top_level_attr_props.docs;
-
-    // Iterate struct and generate the TypeScript impl:
-    let ts_impl = match Fields::from_syn(s.fields.clone())? {
-        // serde deserialises to inner val
+    let api_body_impl = match Fields::from_syn(s.fields.clone())? {
+        // Newtype structs (de)serialize to their inner value:
         Fields::Single(f) => {
-            let field_toks = quote_field(&f);
+            let info = with_docs(quote_field(&f), &docs);
             quote! {
-                impl ::#crate_name::api::ApiBody for #ident {
-                    fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
-                        let mut t = #field_toks;
-                        let d = #top_level_docs;
-                        if d.len() > 0 { t.description = d.to_owned() }
-                        t
+                impl #api::ApiBody for #ident {
+                    fn api_body_info() -> #api::ApiBodyInfo {
+                        #info
                     }
                 }
             }
         }
-        // serde deserialises to [val1, val2..]
+        // Tuple structs (de)serialize to [val1, val2, ..]:
         Fields::Unnamed(fields) => {
-            let types = fields.iter().map(quote_field).collect::<Vec<_>>();
+            let values = fields.iter().map(quote_field);
             quote! {
-                impl ::#crate_name::api::ApiBody for #ident {
-                    fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
-                        ::#crate_name::api::ApiBodyInfo {
-                            description: #top_level_docs.to_owned(),
-                            ty: ::#crate_name::api::ApiBodyType::TupleOf {
-                                values: vec![ #( #types ),* ]
-                            }
+                impl #api::ApiBody for #ident {
+                    fn api_body_info() -> #api::ApiBodyInfo {
+                        #api::ApiBodyInfo {
+                            description: #docs.to_owned(),
+                            ty: #api::ApiBodyType::TupleOf {
+                                values: vec![#(#values),*],
+                            },
                         }
                     }
                 }
             }
         }
-        // serde deserializes to { key: ty,... }. We also impl a
-        // special ApiStruct trait, which we can try using
-        // in the enum variant to ensure that we have named structs.
+        // Structs with named fields (de)serialize to { key: value, .. }. We also implement
+        // ApiBodyStruct for them, so that they can be flattened into other structs and used
+        // in newtype enum variants.
         Fields::Named(fields) => {
             let entries = fields.iter().map(|f| {
-                let flatten = f.attr_props.flatten;
-                if flatten {
-                    // Get the field struct info and append all sub things to the map:
+                if f.attr_props.flatten {
+                    // Merge the fields of the flattened struct into ours:
                     let ty = &f.field.ty;
-                    quote!{{
-                        let s = <#ty as ::#crate_name::api::ApiBodyStruct>::api_body_struct_info();
-                        for (key, val) in s.struc.into_iter() { m.insert(key, val); }
-                    }}
+                    quote! {
+                        fields.extend(<#ty as #api::ApiBodyStruct>::api_body_struct_info().fields);
+                    }
                 } else {
-                    // Just append the api_body info for the field to the map:
                     let name = wire_name(f.field.ident.as_ref().unwrap());
-                    let f = quote_field(f);
-                    quote!{ m.insert(#name.to_owned(), #f); }
+                    let info = quote_field(f);
+                    quote! { fields.insert(#name.to_owned(), #info); }
                 }
-            }).collect::<Vec<_>>();
+            });
             quote! {
-                impl ::#crate_name::api::ApiBodyStruct for #ident {
-                    fn api_body_struct_info() -> ::#crate_name::api::ApiBodyStructInfo {
-                        let mut m = std::collections::HashMap::new();
+                impl #api::ApiBodyStruct for #ident {
+                    fn api_body_struct_info() -> #api::ApiBodyStructInfo {
+                        let mut fields = std::collections::HashMap::new();
                         #(#entries)*
-                        ::#crate_name::api::ApiBodyStructInfo {
-                            description: #top_level_docs.to_owned(),
-                            struc: m
+                        #api::ApiBodyStructInfo {
+                            description: #docs.to_owned(),
+                            fields,
                         }
                     }
                 }
-                impl ::#crate_name::api::ApiBody for #ident {
-                    fn api_body_info() -> ::#crate_name::api::ApiBodyInfo {
-                        let s = <#ident as ::#crate_name::api::ApiBodyStruct>::api_body_struct_info();
-                        ::#crate_name::api::ApiBodyInfo {
+                impl #api::ApiBody for #ident {
+                    fn api_body_info() -> #api::ApiBodyInfo {
+                        let s = <Self as #api::ApiBodyStruct>::api_body_struct_info();
+                        #api::ApiBodyInfo {
                             description: s.description,
-                            ty: ::#crate_name::api::ApiBodyType::Object { keys: s.struc }
+                            ty: #api::ApiBodyType::Object { keys: s.fields },
                         }
                     }
                 }
             }
         }
-        // Not allowed
-        Fields::Unit => {
-            quote_spanned! {s.ident.span() =>
-                compile_error!("TypeScript: unit structs are not supported")
-            }
-        }
+        Fields::Unit => quote_spanned! {ident.span() =>
+            compile_error!("ApiBody: unit structs are not supported");
+        },
     };
 
-    // Do we want to generate the serialize and deserialize impl?
-    let serialize_toks = if attrs.serialize {
-        quote! { #[derive(::#crate_name::serde::Serialize)] }
-    } else {
-        TokenStream2::new()
-    };
-    let deserialize_toks = if attrs.deserialize {
-        quote! { #[derive(::#crate_name::serde::Deserialize)] }
-    } else {
-        TokenStream2::new()
-    };
-
-    // Replace "api_body" tags with corresponding serde tags
-    let mut sanitized_s = s;
-    for field in sanitized_s.fields.iter_mut() {
+    // Replace our "api_body" attrs with corresponding serde attrs:
+    let mut item = s;
+    for field in item.fields.iter_mut() {
         let props = attrs::parse(&field.attrs)?;
         replace_with_serde_attrs(field, &props);
     }
 
-    // We tell serde where to look for its crate contents (otherwise it expects `serde::*`
-    // to exist, which it might not.)
-    let serde_crate_path = format!("::{}::serde", crate_name);
+    let serde_attrs = serde_attrs(&attrs);
 
     Ok(quote! {
-        #serialize_toks
-        #deserialize_toks
-        #[serde(crate = #serde_crate_path)]
-        #sanitized_s
+        #serde_attrs
+        #item
 
-        #ts_impl
+        #api_body_impl
     })
 }
 
+/// The serde derives asked for via `#[ApiBody(..)]`. We also tell serde to use our re-export
+/// of it (otherwise it expects `serde::*` to exist, which it might not).
+fn serde_attrs(attrs: &Attrs) -> TokenStream2 {
+    let serialize = attrs
+        .serialize
+        .then(|| quote! { #[derive(::seamless::serde::Serialize)] });
+    let deserialize = attrs
+        .deserialize
+        .then(|| quote! { #[derive(::seamless::serde::Deserialize)] });
+    quote! {
+        #serialize
+        #deserialize
+        #[serde(crate = "::seamless::serde")]
+    }
+}
+
+/// The `ApiBodyInfo` for a single field, with any docs on the field used as its description.
 fn quote_field(f: &Field) -> TokenStream2 {
-    let crate_name: syn::Ident = syn::Ident::new(CRATE_NAME_STR, Span::call_site());
+    let api = crate::seamless_api();
     let ty = &f.field.ty;
-    let docs = &f.attr_props.docs;
     // `#[api_body(optional)]` fields are described as `{ key?: T }`. OptionalField is only
     // implemented for Option<T>, so this fails to compile if the field isn't an Option.
     let info = if f.attr_props.optional {
-        quote! { ::#crate_name::api::ApiBodyInfo {
-            description: String::new(),
-            ty: ::#crate_name::api::ApiBodyType::Optional {
-                value: Box::new(<<#ty as ::#crate_name::api::OptionalField>::Inner as ::#crate_name::api::ApiBody>::api_body_info())
+        quote! {
+            #api::ApiBodyInfo {
+                description: String::new(),
+                ty: #api::ApiBodyType::Optional {
+                    value: Box::new(<<#ty as #api::OptionalField>::Inner as #api::ApiBody>::api_body_info()),
+                },
             }
-        }}
+        }
     } else {
-        quote! { <#ty as ::#crate_name::api::ApiBody>::api_body_info() }
+        quote! { <#ty as #api::ApiBody>::api_body_info() }
     };
+    with_docs(info, &f.attr_props.docs)
+}
+
+/// Wrap an expression producing an `ApiBodyInfo` so that its description is
+/// replaced with `docs`, unless `docs` is empty.
+fn with_docs(info: TokenStream2, docs: &str) -> TokenStream2 {
+    if docs.is_empty() {
+        return info;
+    }
     quote! {{
-        let mut t = #info;
-        let d = #docs;
-        if d.len() > 0 { t.description = d.to_owned(); }
-        t
+        let mut info = #info;
+        info.description = #docs.to_owned();
+        info
     }}
 }
 

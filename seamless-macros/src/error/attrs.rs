@@ -1,13 +1,18 @@
-use proc_macro2::Span;
-
+/// What the generated `From<T> for ApiError` impl should do for a struct or enum variant.
 #[derive(Debug)]
-pub struct FinalApiErrorAttrs {
-    pub external_message: Option<syn::Expr>,
-    pub code: syn::Expr,
-    pub delegate_to_child: bool,
+#[allow(clippy::large_enum_variant)]
+pub enum ErrorImpl {
+    /// Delegate to the `Into<ApiError>` impl of the single unnamed field.
+    Delegate,
+    /// Build an `ApiError` using the `Display` impl as the internal message.
+    Convert {
+        code: syn::Expr,
+        /// `None` means that the `Display` impl is used as the external message too.
+        external_message: Option<syn::Expr>,
+    },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ApiErrorAttrs {
     external_tok: Option<syn::Path>,
     internal_tok: Option<syn::Path>,
@@ -17,71 +22,36 @@ pub struct ApiErrorAttrs {
 }
 
 impl ApiErrorAttrs {
-    pub fn finalise(mut self) -> syn::Result<FinalApiErrorAttrs> {
-        let code = self.code.unwrap_or(syn::parse_quote!(500u16));
-
-        let to_external_message_str = |s: Option<syn::Expr>| {
-            match s {
-                Some(s) => {
-                    // Allow arbitrary expressions.
-                    s
-                }
-                None => {
-                    let s = syn::LitStr::new("Internal server error", Span::call_site());
-                    syn::Expr::Lit(syn::ExprLit {
-                        attrs: vec![],
-                        lit: syn::Lit::Str(s),
-                    })
-                }
-            }
-        };
-
-        // if there is an inner attr, force delegation to child:
+    pub fn finalise(self) -> ErrorImpl {
         if self.inner_tok.is_some() {
-            self.internal_tok = None;
-            self.external_tok = None;
-            self.external_message = None;
-            self.code = None;
+            return ErrorImpl::Delegate;
         }
 
-        // Invalid: 'external' and 'external = "foo"' makes no sense (if err is external, can't provide an external msg too!)
-        if let Some(msg) = &self.external_message && self.external_tok.is_some() {
-            Err(syn::Error::new_spanned(
-                msg,
-                "'external' and 'external = \"foo\"' shouldn't both be provided",
-            ))
-        }
-        // The error will be internal only:
-        else if self.internal_tok.is_some() || self.external_message.is_some() {
-            Ok(FinalApiErrorAttrs {
-                external_message: Some(to_external_message_str(self.external_message)),
+        let code = self.code.unwrap_or_else(|| syn::parse_quote!(500u16));
+
+        if self.internal_tok.is_some() || self.external_message.is_some() {
+            // The error message is for internal eyes only:
+            let external_message = self.external_message.unwrap_or_else(|| {
+                syn::parse_quote!(::seamless::api::ApiError::SERVER_ERROR)
+            });
+            ErrorImpl::Convert {
                 code,
-                delegate_to_child: false,
-            })
-        }
-        // Error will be shown externally:
-        else if self.external_tok.is_some() {
-            Ok(FinalApiErrorAttrs {
-                external_message: None,
+                external_message: Some(external_message),
+            }
+        } else if self.external_tok.is_some() {
+            // The error message will be shown externally:
+            ErrorImpl::Convert {
                 code,
-                delegate_to_child: false,
-            })
-        }
-        // Not internal or external? Delegate to the child impl (enums) or error if we can't:
-        else {
-            Ok(FinalApiErrorAttrs {
                 external_message: None,
-                code: syn::parse_quote!(0u16),
-                delegate_to_child: true,
-            })
+            }
+        } else {
+            // Not internal or external? Delegate to the inner error (or fail if there isn't one):
+            ErrorImpl::Delegate
         }
     }
 
-    pub fn finalise_with_parent_attrs(
-        mut self,
-        parent: &ApiErrorAttrs,
-    ) -> syn::Result<FinalApiErrorAttrs> {
-        // Only self can have an "inner" attr:
+    pub fn finalise_with_parent_attrs(mut self, parent: &ApiErrorAttrs) -> syn::Result<ErrorImpl> {
+        // Only variants can have an "inner" attr:
         if let Some(t) = &parent.inner_tok {
             return Err(syn::Error::new_spanned(
                 t,
@@ -101,44 +71,29 @@ impl ApiErrorAttrs {
         if self.code.is_none() {
             self.code = parent.code.clone();
         }
-        self.finalise()
+        Ok(self.finalise())
     }
 
     pub fn parse(attrs: &[syn::Attribute]) -> syn::Result<ApiErrorAttrs> {
-        let mut internal_tok: Option<syn::Path> = None;
-        let mut external_tok: Option<syn::Path> = None;
-        let mut inner_tok: Option<syn::Path> = None;
-        let mut external_message: Option<syn::Expr> = None;
-        let mut code: Option<syn::Expr> = None;
+        let mut out = ApiErrorAttrs::default();
 
-        for attr in attrs {
-            // Ignore all attributes we don't care about
-            if !attr.path().is_ident("api_error") {
-                continue;
-            }
-
+        for attr in attrs.iter().filter(|attr| attr.path().is_ident("api_error")) {
             attr.parse_nested_meta(|meta| {
                 let value = meta.value();
                 let path = meta.path;
 
                 if path.is_ident("internal") {
-                    internal_tok = Some(path);
+                    out.internal_tok = Some(path);
                 } else if path.is_ident("external") {
+                    // Either `external` or `external = <expr>`:
                     match value {
-                        Ok(val) => {
-                            // If `= value`, parse the value as a string
-                            external_message = Some(val.parse()?);
-                        }
-                        Err(_) => {
-                            // If no value, that's all good too.
-                            external_tok = Some(path);
-                        }
+                        Ok(value) => out.external_message = Some(value.parse()?),
+                        Err(_) => out.external_tok = Some(path),
                     }
                 } else if path.is_ident("inner") {
-                    inner_tok = Some(path);
+                    out.inner_tok = Some(path);
                 } else if path.is_ident("code") {
-                    // Here we expect `= number` else we'll error
-                    code = Some(value?.parse()?);
+                    out.code = Some(value?.parse()?);
                 } else {
                     return Err(syn::Error::new_spanned(path, "unrecognized attribute"));
                 }
@@ -149,11 +104,11 @@ impl ApiErrorAttrs {
 
         // A thing can't be marked "inner" and have any other internal/external/code props,
         // since we'll be ignoring them all anyway:
-        if let Some(inner_tok) = &inner_tok
-            && (external_tok.is_some()
-                || external_message.is_some()
-                || internal_tok.is_some()
-                || code.is_some())
+        if let Some(inner_tok) = &out.inner_tok
+            && (out.external_tok.is_some()
+                || out.external_message.is_some()
+                || out.internal_tok.is_some()
+                || out.code.is_some())
         {
             return Err(syn::Error::new_spanned(
                 inner_tok,
@@ -162,27 +117,25 @@ impl ApiErrorAttrs {
         }
 
         // A thing can't be "external" and "internal" at once:
-        if let Some(external_tok) = &external_tok && internal_tok.is_some() {
+        if let Some(external_tok) = &out.external_tok
+            && out.internal_tok.is_some()
+        {
             return Err(syn::Error::new_spanned(
                 external_tok,
                 "'internal' and 'external' can't be declared together",
             ));
         }
 
-        // Can't have external and exteral = "foo" at once:
-        if let Some(external_tok) = &external_tok && external_message.is_some() {
+        // Can't have external and external = "foo" at once:
+        if let Some(external_tok) = &out.external_tok
+            && out.external_message.is_some()
+        {
             return Err(syn::Error::new_spanned(
                 external_tok,
                 "'external' and 'external = \"foo\"' can't be declared together",
             ));
         }
 
-        Ok(ApiErrorAttrs {
-            external_tok,
-            internal_tok,
-            inner_tok,
-            external_message,
-            code,
-        })
+        Ok(out)
     }
 }

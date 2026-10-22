@@ -1,7 +1,8 @@
-use crate::api::{ApiBody, ApiBodyInfo, ApiError};
+use crate::api::{ApiBody, ApiBodyInfo, ApiBodyType, ApiError};
 use bytes::Bytes;
 use futures::io::{AsyncRead, AsyncReadExt};
 use futures::stream::{self, BoxStream, Stream, StreamExt};
+use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use serde::Serialize;
 use std::borrow::Cow;
 use std::future::Future;
@@ -120,10 +121,7 @@ impl Body {
     /// Convert the body into a [`BodyStream`], which implements [`futures::Stream`] and
     /// hands back chunks of bytes as they become available.
     pub fn into_stream(self) -> BodyStream {
-        match self.0 {
-            Inner::Full(bytes) => BodyStream(BodyStreamInner::Full(bytes)),
-            Inner::Stream(stream) => BodyStream(BodyStreamInner::Stream(stream)),
-        }
+        BodyStream(self.0)
     }
 
     /// Read the entire body into a [`Vec<u8>`]. This is mostly useful for tests; prefer to
@@ -143,20 +141,15 @@ impl Body {
 }
 
 /// A [`futures::Stream`] of chunks of bytes, obtained via [`Body::into_stream()`].
-pub struct BodyStream(BodyStreamInner);
-
-enum BodyStreamInner {
-    // Empty once the bytes have been handed out (or if there were none to begin
-    // with); we never hand back an empty chunk.
-    Full(Bytes),
-    Stream(BoxStream<'static, std::io::Result<Bytes>>),
-}
+// When streaming, `Inner::Full` is left empty once its bytes have been handed out;
+// we never hand back an empty chunk.
+pub struct BodyStream(Inner);
 
 impl std::fmt::Debug for BodyStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
-            BodyStreamInner::Full(bytes) => f.debug_tuple("BodyStream::Full").field(bytes).finish(),
-            BodyStreamInner::Stream(_) => f.debug_tuple("BodyStream::Stream").finish(),
+            Inner::Full(bytes) => f.debug_tuple("BodyStream::Full").field(bytes).finish(),
+            Inner::Stream(_) => f.debug_tuple("BodyStream::Stream").finish(),
         }
     }
 }
@@ -167,20 +160,20 @@ impl Stream for BodyStream {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // BodyStream is Unpin, since both Bytes and BoxStream are.
         match &mut self.get_mut().0 {
-            BodyStreamInner::Full(bytes) if bytes.is_empty() => Poll::Ready(None),
+            Inner::Full(bytes) if bytes.is_empty() => Poll::Ready(None),
             // Taking leaves an empty `Bytes` behind, which doesn't allocate.
-            BodyStreamInner::Full(bytes) => Poll::Ready(Some(Ok(std::mem::take(bytes)))),
-            BodyStreamInner::Stream(stream) => stream.poll_next_unpin(cx),
+            Inner::Full(bytes) => Poll::Ready(Some(Ok(std::mem::take(bytes)))),
+            Inner::Stream(stream) => stream.poll_next_unpin(cx),
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         match &self.0 {
-            BodyStreamInner::Full(bytes) => {
+            Inner::Full(bytes) => {
                 let n = usize::from(!bytes.is_empty());
                 (n, Some(n))
             }
-            BodyStreamInner::Stream(stream) => stream.size_hint(),
+            Inner::Stream(stream) => stream.size_hint(),
         }
     }
 }
@@ -216,7 +209,7 @@ impl From<&'static str> for Body {
 }
 
 /// Wrap responses in this to return them as JSON
-pub struct ToJson<T: ApiBody>(pub T);
+pub struct ToJson<T>(pub T);
 
 impl<T: ApiBody + Serialize + Send> HandlerResponse for ToJson<T> {
     type ResponseBody = T;
@@ -225,7 +218,7 @@ impl<T: ApiBody + Serialize + Send> HandlerResponse for ToJson<T> {
             ApiError::server_error(format!("Could not serialize response to JSON: {e}"))
         })?;
         http::Response::builder()
-            .header("content-type", "application/json")
+            .header(CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .map_err(|e| ApiError::server_error(format!("Could not build JSON response: {e}")))
     }
@@ -266,21 +259,13 @@ where
 ///    });
 /// # use futures::StreamExt;
 /// ```
+#[derive(Debug)]
 pub struct ToBinary {
     body: Body,
     content_type: Cow<'static, str>,
     content_length: Option<usize>,
 }
 
-impl std::fmt::Debug for ToBinary {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ToBinary")
-            .field("body", &self.body)
-            .field("content_type", &self.content_type)
-            .field("content_length", &self.content_length)
-            .finish()
-    }
-}
 
 impl ToBinary {
     /// Respond with the given body. This can be anything which converts into a [`Body`],
@@ -289,10 +274,7 @@ impl ToBinary {
         let body = body.into();
 
         // If the body length is known up front, tell the client:
-        let mut content_length = None;
-        if let Some(bytes) = body.as_bytes() {
-            content_length = Some(bytes.len());
-        }
+        let content_length = body.as_bytes().map(Bytes::len);
 
         ToBinary {
             body,
@@ -338,9 +320,9 @@ impl ToBinary {
 impl HandlerResponse for ToBinary {
     type ResponseBody = ToBinary;
     async fn handler_response(self) -> Result<HttpResponse, ApiError> {
-        let mut res = http::Response::builder().header("content-type", &*self.content_type);
+        let mut res = http::Response::builder().header(CONTENT_TYPE, &*self.content_type);
         if let Some(len) = self.content_length {
-            res = res.header("content-length", len);
+            res = res.header(CONTENT_LENGTH, len);
         }
         res.body(self.body)
             .map_err(|e| ApiError::server_error(format!("Could not build binary response: {e}")))
@@ -351,12 +333,12 @@ impl ApiBody for ToBinary {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: "Binary data".to_owned(),
-            ty: crate::api::ApiBodyType::Binary,
+            ty: ApiBodyType::Binary,
         }
     }
 }
 
-// Options are valid HandlerResponse's if their T's are
+// Options are valid HandlerResponses if their T's are. `None` becomes a 404.
 impl<T> HandlerResponse for Option<T>
 where
     T: HandlerResponse + Send,
@@ -368,7 +350,7 @@ where
     }
 }
 
-// Results are valid HandlerResponse's if their T's are, and their E's convert to ApiError
+// Results are valid HandlerResponses if their T's are, and their E's convert to ApiError
 impl<T, E> HandlerResponse for Result<T, E>
 where
     T: HandlerResponse + Send,
@@ -376,13 +358,13 @@ where
 {
     type ResponseBody = <T as HandlerResponse>::ResponseBody;
     async fn handler_response(self) -> Result<HttpResponse, ApiError> {
-        let res = self.map_err(|e| e.into())?;
+        let res = self.map_err(Into::into)?;
         res.handler_response().await
     }
 }
 
 #[cfg(test)]
-mod test_body {
+mod tests {
     use super::*;
 
     #[tokio::test]

@@ -45,17 +45,17 @@ where
     /// our parameter from the provided request.
     ///
     /// To be usable with [`crate::api::Api`], the error should implement `Into<ApiError>`
-    /// (the [`macro@crate::ApiError`] macro can be used to gelp with this).
+    /// (the [`macro@crate::ApiError`] macro can be used to help with this).
     ///
     /// It can be simpler just to set this to `ApiError` directly.
     type Error: Into<ApiError> + 'static;
-    /// Given a [`http::Request<()>`], return a value of type `T` back, or
-    /// else return an error of type `E` describing what went wrong. Any errors
+    /// Given a [`http::Request<()>`], return a value of this type, or
+    /// else return an [`Self::Error`] describing what went wrong. Any errors
     /// here will lead to the route bailing out and the handler not being run.
     fn handler_param(req: &Request<()>) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 }
 
-// Option<Body> means we'll return None to the handler if handler_param would fail.
+// Option<T> means we'll return None to the handler if handler_param would fail.
 // This will never error.
 impl<T: HandlerParam> HandlerParam for Option<T> {
     type Error = std::convert::Infallible;
@@ -64,7 +64,7 @@ impl<T: HandlerParam> HandlerParam for Option<T> {
     }
 }
 
-// Result<Context,Err> means we'll return the result of attempting to obtain the context.
+// Result<T, T::Error> means we'll return the result of attempting to obtain the param.
 // This will never error.
 impl<T: HandlerParam> HandlerParam for Result<T, <T as HandlerParam>::Error> {
     type Error = <T as HandlerParam>::Error;

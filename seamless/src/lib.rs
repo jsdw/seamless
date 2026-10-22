@@ -12,15 +12,16 @@ API routes in an Axum app and use normal Axum routes to serve other content alon
 Each API route that you wish to create exists at some path, and is given a handler function which can expect
 a specific shape of request body, and will return a specific shape of response, or else an error if things go wrong.
 
-The expected body types, response types and any errors that are used must implement the [`crate::ApiBody`] and
-[`crate::ApiError`] traits. These traits can be derived via the provided macros, and under the hood will:
+The expected body and response types must implement the [`trait@crate::ApiBody`] trait, and any errors that are
+used must convert into an [`struct@crate::ApiError`]. Both can be derived via the provided macros, which under the
+hood will:
 - Implement the [`serde::Serialize`] and [`serde::Deserialize`] traits so that we can receive and respond with
   values of the given types.
-- Implement the [`crate::ApiBody`] or [`crate::ApiError`] traits so that we know the shape of the incoming and
+- Implement [`trait@crate::ApiBody`] or `Into<ApiError>` so that we know the shape of the incoming and
   outgoing types, and how any given error should be presented to the client and with what status code.
 
-See the `seamless/seamless/examples` folder in the crate repository for a working example demonstrating how to use
-seamless with both Hyper and Axum, as well as a couple of mroe basic examples.
+See the `seamless/examples` folder in the crate repository for working examples demonstrating how to use
+seamless with both Hyper and Axum, as well as a couple of more basic examples.
 
 # A Basic Example
 
@@ -65,7 +66,7 @@ enum MathsError {
 let mut api = Api::new();
 
 // Now, let's define some routes for our API. Handler functions can be async or sync,
-// and can return any valid handler::HandlerResponse. Here to use `ToJson` to return
+// and can return any valid handler::HandlerResponse. Here we use `ToJson` to return
 // JSON responses, and in one case return a Result which is either the error we defined
 // above, or the response type we defined above.
 api.add("/echo")
@@ -251,7 +252,7 @@ async fn divide(input: BinaryInput) -> Result<ToJson<BinaryOutput>,MathsError> {
     todo!()
 }
 
-// A small APi with one route:
+// A small API with one route:
 let mut api = Api::new();
 api.add("maths/divide")
     .description("Divide two numbers by each other")
@@ -309,18 +310,18 @@ let info_json = json!([
 ```
 
 The "shape" object can have one of the following "type" literals: `String`, `Number`, `Boolean`, `Null`,
-`Any`, `ArrayOf`, `TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some of these will come
-with an additional perty. See `seamless/src/api/info.rs` to get a better feel for exactly what the possible responses
-can be.
+`Any`, `Unknown`, `Binary`, `ArrayOf`, `TupleOf`, `ObjectOf`, `Object`, `OneOf`, `StringLiteral`, `Optional`. Some
+of these will come with an additional property. See [`ApiBodyType`] to get a better feel for exactly what the possible
+responses can be.
 
 # Integrating with other libraries
 
 Instead of passing requests in manually, you'll probably want to attach an API you define here to a library like
-`Rocket` or `Warp` (or perhaps just plain old `Hyper`) so that you can benefit from the full power and flexibility
+`Axum` (or perhaps just plain old `Hyper`) so that you can benefit from the full power and flexibility
 of a well rounded HTTP library alongside your well typed `seamless` API, and actually make the API available
 externally.
 
-See `examples/warp.rs` and `examples/rocket.rs` for examples of how you might integrate this library with those.
+See `examples/axum.rs` and `examples/hyper.rs` for examples of how you might integrate this library with those.
 Essentially it boils down to being able to construct an `http::Request` from whatever input the library gives you
 access to, and being able to handle the `http::Response` or error that's handed back from Seamless.
 
@@ -331,7 +332,7 @@ to server without using external tools like OpenAPI.
 
 - Seamless has not been optimised for building RESTful style APIs. However, the [`handler::HandlerBody`] and
   [`handler::HandlerParam`] traits in particular provide a bunch of extensibility.
-- Some of the flexiblity that `Serde` provides for manipulating how types are serialized and deserialized is not
+- Some of the flexibility that `Serde` provides for manipulating how types are serialized and deserialized is not
   available. This library takes the approach of 'wrapping' serde using the [`macro@ApiBody`] macro to deliberately restrict
   how you can transform types, ensuring that any transformations allowed are properly supported and lead to the correct
   type information being generated.

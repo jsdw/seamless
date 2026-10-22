@@ -1,11 +1,10 @@
-use std::ops::{Deref, DerefMut};
-
-use crate::api::{ApiBody, ApiBodyInfo, ApiError};
-use crate::handler::request::{AsyncReadBody, CappedAsyncRead};
+use crate::api::{ApiBody, ApiBodyInfo, ApiBodyType, ApiError};
+use crate::handler::request::{AsyncReadBody, CappedAsyncRead, CappedSizeLimitError};
 use futures::AsyncReadExt;
-use std::future::Future;
-use http::{method::Method, Request};
+use http::{Method, Request};
 use serde::de::DeserializeOwned;
+use std::future::Future;
+use std::ops::{Deref, DerefMut};
 
 /// This trait is implemented by anything that represents the incoming request type.
 /// Only one argument implementing this can be asked for in a given handler. The type
@@ -41,20 +40,17 @@ pub trait IntoBody {
 /// that the user needs to provide JSON that decodes to `T`.
 /// Notably, `T` needs to implement `ApiBody` with the
 /// Deserialize option.
-pub struct FromJson<T: ApiBody>(pub T);
+pub struct FromJson<T>(pub T);
 
 impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
     async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
-        let content_type = req
+        let is_json = req
             .headers()
             .get(http::header::CONTENT_TYPE)
-            .ok_or_else(content_type_not_json_err)?;
-        let content_type_is_json = content_type
-            .to_str()
-            .map(is_json_content_type)
-            .unwrap_or(false);
-        if !content_type_is_json {
-            return Err(content_type_not_json_err());
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(is_json_content_type);
+        if !is_json {
+            return Err(ApiError::external(415, "Content-Type must be application/json"));
         }
 
         // Stream our body into a vector of bytes:
@@ -65,12 +61,7 @@ impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
             .map_err(io_error_to_api_error)?;
 
         // Assume JSON and parse:
-        let json = serde_json::from_slice(&body).map_err(|e| ApiError {
-            code: 400,
-            internal_message: e.to_string(),
-            external_message: e.to_string(),
-            value: None,
-        })?;
+        let json = serde_json::from_slice(&body).map_err(|e| ApiError::external(400, e.to_string()))?;
         Ok(FromJson(json))
     }
 
@@ -88,14 +79,14 @@ where
     }
 }
 
-impl<T: ApiBody> Deref for FromJson<T> {
+impl<T> Deref for FromJson<T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<T: ApiBody> DerefMut for FromJson<T> {
+impl<T> DerefMut for FromJson<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -113,15 +104,6 @@ impl<T: ApiBody> IntoBody for FromJson<T> {
 fn is_json_content_type(value: &str) -> bool {
     let media_type = value.split(';').next().unwrap_or("").trim();
     media_type.eq_ignore_ascii_case("application/json")
-}
-
-fn content_type_not_json_err() -> ApiError {
-    ApiError {
-        code: 415,
-        internal_message: "Content-Type must be application/json".to_string(),
-        external_message: "Content-Type must be application/json".to_string(),
-        value: None,
-    }
 }
 
 /// If the last argument to a handler is this, we'll assume
@@ -148,7 +130,7 @@ impl ApiBody for FromBinary {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: "Binary data".to_owned(),
-            ty: crate::api::ApiBodyType::Binary,
+            ty: ApiBodyType::Binary,
         }
     }
 }
@@ -182,14 +164,14 @@ impl IntoBody for FromBinary {
 /// This wraps anything implementing [`HandlerBody`] and puts a type level cap on the size
 /// that the request body is allowed to be before this is rejected. This works best when the
 /// request body is streamed, as it will stop the streaming once said limit is reached.
-pub struct Capped<T: ApiBody + HandlerBody, const MAX_BYTES: usize>(pub T);
+pub struct Capped<T, const MAX_BYTES: usize>(pub T);
 
-impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T, MAX_BYTES> {
-    async fn handler_body<'a>(req: Request<&'a mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
+impl<T: HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T, MAX_BYTES> {
+    async fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> Result<Self, ApiError> {
         let (parts, body) = req.into_parts();
         let mut body = CappedAsyncRead::<_, MAX_BYTES>::new(body);
         let req = Request::from_parts(parts, &mut body as &mut dyn AsyncReadBody);
-        T::handler_body(req).await.map(|res| Capped(res))
+        T::handler_body(req).await.map(Capped)
     }
 
     fn handler_method() -> Method {
@@ -197,48 +179,37 @@ impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> HandlerBody for Capped<T,
     }
 }
 
-impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> ApiBody for Capped<T, MAX_BYTES> {
+impl<T: ApiBody, const MAX_BYTES: usize> ApiBody for Capped<T, MAX_BYTES> {
     fn api_body_info() -> ApiBodyInfo {
         T::api_body_info()
     }
 }
 
-impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> Deref for Capped<T, MAX_BYTES> {
+impl<T, const MAX_BYTES: usize> Deref for Capped<T, MAX_BYTES> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<T: ApiBody + HandlerBody, const MAX_BYTES: usize> DerefMut for Capped<T, MAX_BYTES> {
+impl<T, const MAX_BYTES: usize> DerefMut for Capped<T, MAX_BYTES> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<T: ApiBody + HandlerBody + IntoBody, const MAX_BYTES: usize> IntoBody
-    for Capped<T, MAX_BYTES>
-{
+impl<T: IntoBody, const MAX_BYTES: usize> IntoBody for Capped<T, MAX_BYTES> {
     type Target = T::Target;
     fn into_body(self) -> Self::Target {
         self.0.into_body()
     }
 }
 
-/// Map io errors in reading HTTP bodies into suitable ApiErrors
+/// Map IO errors from reading HTTP bodies into suitable ApiErrors.
 fn io_error_to_api_error(e: std::io::Error) -> ApiError {
-    use crate::handler::request::CappedSizeLimitError;
-
-    let (msg, code) = match e.downcast::<CappedSizeLimitError>() {
-        Ok(e) => (e.to_string(), 413),
-        Err(e) => (e.to_string(), 400)
-    };
-
-    ApiError {
-        code,
-        internal_message: msg.clone(),
-        external_message: msg,
-        value: None,
+    match e.downcast::<CappedSizeLimitError>() {
+        Ok(e) => ApiError::external(413, e.to_string()),
+        Err(e) => ApiError::external(400, e.to_string()),
     }
 }
 

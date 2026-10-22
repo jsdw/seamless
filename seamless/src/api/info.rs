@@ -24,7 +24,7 @@ pub struct ApiBodyInfo {
 #[doc(hidden)]
 pub struct ApiBodyStructInfo {
     pub description: String,
-    pub struc: HashMap<String, ApiBodyInfo>,
+    pub fields: HashMap<String, ApiBodyInfo>,
 }
 
 /// An enum representing the shape of the JSON that is provided or output from the API.
@@ -102,7 +102,7 @@ pub enum ApiBodyType {
 }
 
 /// Any type that implements this trait can be described in terms of [`ApiBodyInfo`], and
-/// can potentially also be serialized or deserizlied from JSON.
+/// can potentially also be serialized or deserialized from JSON.
 ///
 /// This type should not be manually implemented in most cases; instead the [`ApiBody`](seamless_macros::ApiBody)
 /// macro should be relied on to ensure that the description and shape of the type are consistent with how
@@ -195,7 +195,7 @@ impl<T: ApiBody> OptionalField for Option<T> {
 
 // Primitives:
 macro_rules! impl_api_body {
-    ( $( $($name:path),+ => $ty:expr ),+ ) => (
+    ( $( $($name:ty),+ => $ty:expr );+ ) => (
         $($(
             impl ApiBody for $name {
                 fn api_body_info() -> ApiBodyInfo {
@@ -221,30 +221,16 @@ impl_api_body! {
     std::sync::atomic::AtomicU16,
     std::sync::atomic::AtomicU32,
     std::sync::atomic::AtomicU64,
-    serde_json::Number,
-    std::sync::atomic::AtomicUsize => ApiBodyType::Number,
+    std::sync::atomic::AtomicUsize,
+    serde_json::Number => ApiBodyType::Number;
     bool,
-    std::sync::atomic::AtomicBool => ApiBodyType::Boolean,
-    String => ApiBodyType::String
-}
-impl ApiBody for &str {
-    fn api_body_info() -> ApiBodyInfo {
-        ApiBodyInfo {
-            description: String::new(),
-            ty: ApiBodyType::String,
-        }
-    }
+    std::sync::atomic::AtomicBool => ApiBodyType::Boolean;
+    String, &str => ApiBodyType::String;
+    () => ApiBodyType::Null;
+    serde_json::Value => ApiBodyType::Any
 }
 
 // Tuples:
-impl ApiBody for () {
-    fn api_body_info() -> ApiBodyInfo {
-        ApiBodyInfo {
-            description: String::new(),
-            ty: ApiBodyType::Null,
-        }
-    }
-}
 macro_rules! impl_api_body_tuples {
     ( $( $( $name:ident )+ ),+ ) => (
         $(
@@ -274,14 +260,6 @@ impl_api_body_tuples! {
     A B C D E F G H I J
 }
 
-impl ApiBody for serde_json::Value {
-    fn api_body_info() -> ApiBodyInfo {
-        ApiBodyInfo {
-            description: String::new(),
-            ty: ApiBodyType::Any,
-        }
-    }
-}
 
 impl<T: ApiBody> ApiBody for serde_json::Map<String, T> {
     fn api_body_info() -> ApiBodyInfo {

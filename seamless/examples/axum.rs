@@ -24,7 +24,6 @@ use seamless::{
     },
 };
 use std::sync::Arc;
-use std::usize;
 
 #[tokio::main]
 async fn main() {
@@ -87,7 +86,7 @@ async fn seamless_to_axum(state: State<Arc<Api>>, request: Request<Body>) -> Res
     // preserving the streaming.
     let body_stream = body.into_data_stream().map(|bytes| match bytes {
         Ok(bytes) => Ok(bytes.to_vec()),
-        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        Err(e) => Err(std::io::Error::other(e)),
     });
 
     let body = RequestBytes::from_stream(body_stream);
