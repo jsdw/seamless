@@ -4,7 +4,7 @@
 [![Docs.rs](https://img.shields.io/docsrs/seamless)](https://docs.rs/seamless)
 [![CI](https://github.com/jsdw/seamless/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/jsdw/seamless/actions/workflows/ci.yml)
 
-[See the examples](./seamless/examples/)
+[See the examples](https://github.com/jsdw/seamless/tree/master/seamless/examples)
 
 Seamless provides a way to declare a simple RPC style HTTP API, and from this declaration can hand back enough
 information that we can generate a type safe HTTP client for interacting with it.
