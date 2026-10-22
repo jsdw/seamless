@@ -14,7 +14,7 @@ categories.workspace = true
 keywords.workspace = true
 
 [features]
-default = []
+default = ["serialize", "deserialize"]
 # Derive `serde::Serialize` on all types.
 serialize = ["dep:serde"]
 # Derive `serde::Deserialize` on all types.

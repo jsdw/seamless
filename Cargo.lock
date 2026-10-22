@@ -448,6 +448,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "seamless_ts"
+version = "0.14.0"
+dependencies = [
+ "pretty_assertions",
+ "seamless",
+ "seamless_info",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"

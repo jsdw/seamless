@@ -55,6 +55,12 @@ impl Api {
     /// If you add a route at the same path and requiring the same method as an existing route,
     /// the existing route will be silently overwritten.
     ///
+    /// Leading and trailing slashes are ignored, so `"/foo/"` is the same path as `"foo"`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the path is empty, or consists only of slashes.
+    ///
     /// # Examples
     ///
     /// ```
@@ -77,7 +83,9 @@ impl Api {
     /// }
     /// ```
     pub fn add<P: Into<String>>(&mut self, path: P) -> RouteBuilder<'_> {
-        RouteBuilder::new(self, path.into())
+        let path = path.into().trim_matches('/').to_owned();
+        assert!(!path.is_empty(), "Routes cannot be added at an empty path");
+        RouteBuilder::new(self, path)
     }
 
     // Add a route given the individual parts (for internal use)
@@ -88,7 +96,6 @@ impl Api {
         handler_fn: HandlerFn,
     ) {
         let handler = handler_fn.into_handler();
-        let path = path.trim_matches('/').to_owned();
         self.routes.insert(
             (handler.method.clone(), path),
             Route {

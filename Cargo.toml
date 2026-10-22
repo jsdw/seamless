@@ -2,7 +2,8 @@
 members = [
     "seamless",
     "seamless-info",
-    "seamless-macros"
+    "seamless-macros",
+    "seamless-ts"
 ]
 resolver = "3"
 
@@ -23,10 +24,11 @@ seamless_info = { version = "0.14.0", path = "seamless-info", default-features =
 
 # Dependencies
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-serde_json = "1"
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
 http = "1"
 futures = "0.3.34"
 bytes = "1"
+thiserror = { version = "2", default-features = false }
 uuid = "1"
 syn = { version = "3", features = ["full", "extra-traits"] }
 quote = "1"
@@ -35,7 +37,6 @@ proc-macro2 = "1"
 # Dev dependencies
 trybuild = "1.0.120"
 pretty_assertions = "1"
-thiserror = "2"
 tokio = { version = "1.1.0", features = ["rt", "rt-multi-thread", "macros", "net"] }
 tokio-util = { version = "0.6.7", features = ["compat"] }
 axum = { version = "0.8.9", features = ["macros"] }

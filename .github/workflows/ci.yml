@@ -58,7 +58,7 @@ jobs:
       - run: cargo test --workspace --all-features
 
   no_std:
-    name: no_std (seamless_info)
+    name: no_std (seamless_info, seamless_ts)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -66,8 +66,8 @@ jobs:
         with:
           targets: thumbv7em-none-eabi
       - uses: Swatinem/rust-cache@v2
-      # thumbv7em-none-eabi has no std, so this fails if seamless_info (or any of
-      # its dependencies, for any combination of its features) starts relying on std.
+      # thumbv7em-none-eabi has no std, so this fails if seamless_info or seamless_ts
+      # (or any of their dependencies, for any combination of features) start relying on std.
       - name: Build (no features)
         run: cargo build -p seamless_info --target thumbv7em-none-eabi
       - name: Build (serialize)
@@ -76,3 +76,5 @@ jobs:
         run: cargo build -p seamless_info --target thumbv7em-none-eabi --features deserialize
       - name: Build (all features)
         run: cargo build -p seamless_info --target thumbv7em-none-eabi --all-features
+      - name: Build seamless_ts
+        run: cargo build -p seamless_ts --target thumbv7em-none-eabi

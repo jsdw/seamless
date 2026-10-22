@@ -1,8 +1,9 @@
 # 0.14.0
 
-- Move `RouteInfo`, `ApiBodyInfo` and `ApiBodyType` into a new `no_std` `seamless-info` crate, whose only dependency is `serde`. Its `serialize` and `deserialize` features derive `Serialize` and `Deserialize` respectively, so the info returned from `Api::info()` can now be deserialized (eg to generate a client from it). The types are re-exported from `seamless::api` and `seamless` as before.
+- **Breaking:** `Api::add()` now panics if given an empty path (or one made up only of slashes).
 - **Breaking:** `ApiBodyType::Object { keys }` is now a `BTreeMap<String, ApiBodyInfo>` rather than a `HashMap`, since `HashMap` isn't available in `no_std`. Object keys are now serialized in a stable (sorted) order as a result.
 - `ApiBody` is now implemented for `BTreeMap<String, T>`.
+- Add a `no_std` `seamless-ts` crate, whose `generate_client()` function takes the JSON serialized info for an API (from `Api::info()`) and generates a type safe TypeScript client from it.
 - **Breaking:** Remove the `IntoBody` trait. Unwrap body types directly instead, either by pattern matching in the handler arguments (eg `|Capped(FromJson(body)): Capped<FromJson<T>, N>| ...`) or via `.0`.
 - **Breaking:** `Option<T>` is now described as `OneOf [T, Null]` (ie `T | null`) rather than `Optional`, since serde serializes `None` as `null`. Previously, clients generated from the info would wrongly expect the key to be omitted.
 - Add `#[api_body(optional)]` for `Option<T>` fields in `ApiBody` structs and enum variants. The field is described as `Optional` (ie `{ key?: T }`), is omitted from the JSON when `None`, and is treated as `None` when missing.
