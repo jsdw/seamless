@@ -5,7 +5,7 @@
 use seamless::{
     api::{Api, ApiBody, ApiError},
     handler::{
-        body::{Capped, FromJson, IntoBody},
+        body::{Capped, FromJson},
         request::Bytes,
         response::ToJson,
     },
@@ -28,8 +28,8 @@ async fn main() {
         .description("Reverse an array of numbers")
         // We cap the request body to 8kb (8 * 1024 bytes) by wrapping it in
         // our 'Capped' type:
-        .handler(|body: Capped<FromJson<Vec<usize>>, { 8 * 1024 }>| {
-            ToJson(body.into_body().into_iter().rev().collect::<Vec<usize>>())
+        .handler(|Capped(FromJson(body)): Capped<FromJson<Vec<usize>>, { 8 * 1024 }>| {
+            ToJson(body.into_iter().rev().collect::<Vec<usize>>())
         });
 
     // This route uses custom types (see below):

@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking:** Remove the `IntoBody` trait. Unwrap body types directly instead, either by pattern matching in the handler arguments (eg `|Capped(FromJson(body)): Capped<FromJson<T>, N>| ...`) or via `.0`.
 - **Breaking:** `Option<T>` is now described as `OneOf [T, Null]` (ie `T | null`) rather than `Optional`, since serde serializes `None` as `null`. Previously, clients generated from the info would wrongly expect the key to be omitted.
 - Add `#[api_body(optional)]` for `Option<T>` fields in `ApiBody` structs and enum variants. The field is described as `Optional` (ie `{ key?: T }`), is omitted from the JSON when `None`, and is treated as `None` when missing.
 - `#[api_body(flatten)]` on an enum variant field is now a clear compile error rather than a confusing one.

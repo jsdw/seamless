@@ -25,19 +25,6 @@ pub trait HandlerBody: Sized {
     fn handler_method() -> Method;
 }
 
-/// A simple trait that makes it a little more ergonomic in some cases to extract the body
-/// out of our various types like [`FromJson`] and [`FromBinary`]. Useful when we combine
-/// types like [`Capped`] so that we can avoid multiple layers of unwrapping.
-pub trait IntoBody {
-    /// The body type that will be extracted. Whatever we extract should itself implement
-    /// [`trait@ApiBody`] to correspond to the generated type information.
-    type Target: ApiBody;
-
-    /// Extract the body of the request with this, unwrapping as many layers of nesting as
-    /// needed.
-    fn into_body(self) -> Self::Target;
-}
-
 /// If the last argument to a handler is this, we'll assume
 /// that the user needs to provide JSON that decodes to `T`.
 /// Notably, `T` needs to implement `ApiBody` with the
@@ -98,13 +85,6 @@ impl<T> DerefMut for FromJson<T> {
     }
 }
 
-impl<T: ApiBody> IntoBody for FromJson<T> {
-    type Target = T;
-    fn into_body(self) -> Self::Target {
-        self.0
-    }
-}
-
 /// True if a Content-Type header value names application/json,
 /// ignoring parameters such as `; charset=utf-8`.
 fn is_json_content_type(value: &str) -> bool {
@@ -160,13 +140,6 @@ impl From<FromBinary> for Vec<u8> {
     }
 }
 
-impl IntoBody for FromBinary {
-    type Target = Vec<u8>;
-    fn into_body(self) -> Self::Target {
-        self.0
-    }
-}
-
 /// This wraps anything implementing [`HandlerBody`] and puts a type level cap on the size
 /// that the request body is allowed to be before this is rejected. This works best when the
 /// request body is streamed, as it will stop the streaming once said limit is reached.
@@ -201,13 +174,6 @@ impl<T, const MAX_BYTES: usize> Deref for Capped<T, MAX_BYTES> {
 impl<T, const MAX_BYTES: usize> DerefMut for Capped<T, MAX_BYTES> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-impl<T: IntoBody, const MAX_BYTES: usize> IntoBody for Capped<T, MAX_BYTES> {
-    type Target = T::Target;
-    fn into_body(self) -> Self::Target {
-        self.0.into_body()
     }
 }
 
