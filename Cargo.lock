@@ -416,6 +416,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "pretty_assertions",
+ "seamless-info",
  "seamless_macros",
  "serde",
  "serde_json",
@@ -424,6 +425,14 @@ dependencies = [
  "tokio-util",
  "trybuild",
  "uuid",
+]
+
+[[package]]
+name = "seamless-info"
+version = "0.14.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

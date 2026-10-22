@@ -18,10 +18,11 @@ keywords.workspace = true
 default = ["uuid"]
 
 [dependencies]
-serde.workspace = true
+serde = { workspace = true, features = ["std"] }
 serde_json.workspace = true
 http.workspace = true
 seamless_macros.workspace = true
+seamless-info = { workspace = true, features = ["serialize"] }
 futures.workspace = true
 bytes.workspace = true
 

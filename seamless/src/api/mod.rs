@@ -7,9 +7,10 @@ mod api;
 mod error;
 mod info;
 
-pub use api::{Api, RouteBuilder, RouteError, RouteInfo};
+pub use api::{Api, RouteBuilder, RouteError};
 pub use error::ApiError;
-pub use info::{ApiBody, ApiBodyInfo, ApiBodyType};
+pub use info::ApiBody;
+pub use seamless_info::{ApiBodyInfo, ApiBodyType, RouteInfo};
 
 // Export these on top of the types, so that you don't need to
 // import `seamless::api::ApiBody` AND `seamless::ApiBody` for

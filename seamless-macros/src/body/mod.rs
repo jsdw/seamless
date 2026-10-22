@@ -123,7 +123,7 @@ pub fn parse_enum(e: syn::ItemEnum, attrs: Attrs) -> syn::Result<TokenStream2> {
                     quote! { keys.insert(#name.to_owned(), #info); }
                 });
                 quote! {{
-                    let mut keys = std::collections::HashMap::new();
+                    let mut keys = ::std::collections::BTreeMap::new();
                     keys.insert(#serde_tag.to_owned(), #tag_info);
                     #(#entries)*
                     #api::ApiBodyInfo {
@@ -223,7 +223,7 @@ pub fn parse_struct(s: syn::ItemStruct, attrs: Attrs) -> syn::Result<TokenStream
             quote! {
                 impl #api::ApiBodyStruct for #ident {
                     fn api_body_struct_info() -> #api::ApiBodyStructInfo {
-                        let mut fields = std::collections::HashMap::new();
+                        let mut fields = ::std::collections::BTreeMap::new();
                         #(#entries)*
                         #api::ApiBodyStructInfo {
                             description: #docs.to_owned(),

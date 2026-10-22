@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "seamless",
+    "seamless-info",
     "seamless-macros"
 ]
 resolver = "3"
@@ -18,9 +19,10 @@ keywords = ["api", "http", "rpc", "json"]
 # Workspace crates
 seamless = { path = "seamless" }
 seamless_macros = { version = "0.14.0", path = "seamless-macros" }
+seamless-info = { version = "0.14.0", path = "seamless-info", default-features = false }
 
 # Dependencies
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = "1"
 http = "1"
 futures = "0.3.34"
