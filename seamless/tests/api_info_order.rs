@@ -11,16 +11,15 @@ fn info_order_is_stable_for_same_path() {
     for _ in 0..50 {
         let mut api = Api::new();
         api.add("b").handler(|| ToJson("b"));
-        api.add("a").handler(|body: FromJson<String>| ToJson(body.0));
+        api.add("a")
+            .handler(|body: FromJson<String>| ToJson(body.0));
         api.add("a").handler(|| ToJson("a"));
-        api.add("c").handler(|body: FromJson<String>| ToJson(body.0));
+        api.add("c")
+            .handler(|body: FromJson<String>| ToJson(body.0));
         api.add("c").handler(|| ToJson("c"));
 
-        let order: Vec<(String, String)> = api
-            .info()
-            .into_iter()
-            .map(|r| (r.name, r.method))
-            .collect();
+        let order: Vec<(String, String)> =
+            api.info().into_iter().map(|r| (r.name, r.method)).collect();
 
         let expected: Vec<(String, String)> = [
             ("a", "GET"),

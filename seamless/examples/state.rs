@@ -3,7 +3,7 @@
 
 use seamless::{
     api::{Api, ApiError},
-    handler::{body::FromJson, request::Bytes, response::ToJson, HandlerParam},
+    handler::{HandlerParam, body::FromJson, request::Bytes, response::ToJson},
 };
 
 // Something we want to inject into our handler.

@@ -266,7 +266,6 @@ pub struct ToBinary {
     content_length: Option<usize>,
 }
 
-
 impl ToBinary {
     /// Respond with the given body. This can be anything which converts into a [`Body`],
     /// including a [`Body`] itself, `Vec<u8>`, [`Bytes`] or `String`.

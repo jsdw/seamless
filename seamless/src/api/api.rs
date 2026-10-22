@@ -1,7 +1,7 @@
 use super::error::ApiError;
 use super::info::ApiBodyInfo;
 use crate::handler::{
-    request::AsyncReadBody, response::Body as ResponseBody, Handler, IntoHandler,
+    Handler, IntoHandler, request::AsyncReadBody, response::Body as ResponseBody,
 };
 use http::{Method, Request, Response};
 use serde::Serialize;
@@ -104,6 +104,7 @@ impl Api {
     /// [`crate::handler::response::Body`] if all goes ok, else we'll get back a [`RouteError`],
     /// which will either be [`RouteError::NotFound`] if no matching route was found, or a
     /// [`RouteError::Err`] if a matching route was found, but that handler emitted an error.
+    #[allow(clippy::result_large_err)]
     pub async fn handle<Body: AsyncReadBody>(
         &self,
         req: Request<Body>,
@@ -142,9 +143,7 @@ impl Api {
             .collect();
         // Sort by name, then by method, so that routes sharing a path come out
         // in a stable order rather than in `HashMap` iteration order.
-        info.sort_by(|a, b| {
-            a.name.cmp(&b.name).then_with(|| a.method.cmp(&b.method))
-        });
+        info.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.method.cmp(&b.method)));
         info
     }
 }

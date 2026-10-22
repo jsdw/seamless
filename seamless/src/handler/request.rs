@@ -5,11 +5,11 @@ provided as a request body, but this module provides a `Bytes` struct which can 
 [`Vec<u8>`] or [`futures::Stream`] into such a body.
 */
 use futures::{
-    io::{AsyncRead, Cursor},
     Stream, TryStreamExt,
+    io::{AsyncRead, Cursor},
 };
 use std::pin::Pin;
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll, ready};
 
 /// Any valid body will implement this trait
 pub trait AsyncReadBody: AsyncRead + Send + Unpin {}

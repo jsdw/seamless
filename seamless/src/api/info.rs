@@ -260,7 +260,6 @@ impl_api_body_tuples! {
     A B C D E F G H I J
 }
 
-
 impl<T: ApiBody> ApiBody for serde_json::Map<String, T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {

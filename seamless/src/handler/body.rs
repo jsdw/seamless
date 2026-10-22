@@ -15,7 +15,9 @@ pub trait HandlerBody: Sized {
     /// instance of the type that this trait is implemented on (typically by deserializing
     /// it from the bytes provided), or else it should return an error describing what
     /// went wrong.
-    fn handler_body(req: Request<&mut dyn AsyncReadBody>) -> impl Future<Output = Result<Self, ApiError>> + Send;
+    fn handler_body(
+        req: Request<&mut dyn AsyncReadBody>,
+    ) -> impl Future<Output = Result<Self, ApiError>> + Send;
 
     /// Which HTTP method is required for this Body to be valid. The built-in body types
     /// ([`FromJson`] and [`FromBinary`]) expect POST, and wrapper types such as [`Capped`]
@@ -50,7 +52,10 @@ impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
             .and_then(|value| value.to_str().ok())
             .is_some_and(is_json_content_type);
         if !is_json {
-            return Err(ApiError::external(415, "Content-Type must be application/json"));
+            return Err(ApiError::external(
+                415,
+                "Content-Type must be application/json",
+            ));
         }
 
         // Stream our body into a vector of bytes:
@@ -61,7 +66,8 @@ impl<T: DeserializeOwned + ApiBody> HandlerBody for FromJson<T> {
             .map_err(io_error_to_api_error)?;
 
         // Assume JSON and parse:
-        let json = serde_json::from_slice(&body).map_err(|e| ApiError::external(400, e.to_string()))?;
+        let json =
+            serde_json::from_slice(&body).map_err(|e| ApiError::external(400, e.to_string()))?;
         Ok(FromJson(json))
     }
 
@@ -237,9 +243,18 @@ mod tests {
     #[test]
     fn capped_forwards_handler_method() {
         assert_eq!(PutBody::handler_method(), Method::PUT);
-        assert_eq!(<Capped<PutBody, 1024> as HandlerBody>::handler_method(), Method::PUT);
-        assert_eq!(<Capped<FromBinary, 1024> as HandlerBody>::handler_method(), Method::POST);
-        assert_eq!(<Capped<FromJson<String>, 1024> as HandlerBody>::handler_method(), Method::POST);
+        assert_eq!(
+            <Capped<PutBody, 1024> as HandlerBody>::handler_method(),
+            Method::PUT
+        );
+        assert_eq!(
+            <Capped<FromBinary, 1024> as HandlerBody>::handler_method(),
+            Method::POST
+        );
+        assert_eq!(
+            <Capped<FromJson<String>, 1024> as HandlerBody>::handler_method(),
+            Method::POST
+        );
     }
 
     #[tokio::test]
@@ -278,7 +293,12 @@ mod tests {
             .unwrap();
         let res = <Capped<FromBinary, 10> as HandlerBody>::handler_body(req)
             .await
-            .unwrap_or_else(|e| panic!("body within the cap should be accepted: {}", e.internal_message));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "body within the cap should be accepted: {}",
+                    e.internal_message
+                )
+            });
         assert_eq!(res.0.0, vec![1u8; 10]);
     }
 

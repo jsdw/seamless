@@ -11,7 +11,7 @@ use seamless::{
     },
     http::Request,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[tokio::main]
 async fn main() {

@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
-use seamless::api::{ApiBodyInfo, ApiBodyType};
 use seamless::ApiBody;
+use seamless::api::{ApiBodyInfo, ApiBodyType};
 
 macro_rules! map {
     ( $($key:expr => $val:expr),* ) => ({
@@ -388,7 +388,8 @@ fn flattens() {
     assert_eq!(
         serde_json::from_value::<Foo>(
             serde_json::json!({ "hello": 10, "there": true, "world": "w" })
-        ).unwrap(),
+        )
+        .unwrap(),
         Foo {
             hello: 10,
             another: Bar {
@@ -399,15 +400,12 @@ fn flattens() {
     );
 }
 
-
 #[test]
 fn raw_identifiers_use_serde_names() {
     #[ApiBody]
     #[allow(dead_code, non_camel_case_types)]
     enum Foo {
-        r#match {
-            r#in: bool,
-        },
+        r#match { r#in: bool },
     }
 
     #[ApiBody]

@@ -31,9 +31,9 @@ impl ApiErrorAttrs {
 
         if self.internal_tok.is_some() || self.external_message.is_some() {
             // The error message is for internal eyes only:
-            let external_message = self.external_message.unwrap_or_else(|| {
-                syn::parse_quote!(::seamless::api::ApiError::SERVER_ERROR)
-            });
+            let external_message = self
+                .external_message
+                .unwrap_or_else(|| syn::parse_quote!(::seamless::api::ApiError::SERVER_ERROR));
             ErrorImpl::Convert {
                 code,
                 external_message: Some(external_message),
@@ -77,7 +77,10 @@ impl ApiErrorAttrs {
     pub fn parse(attrs: &[syn::Attribute]) -> syn::Result<ApiErrorAttrs> {
         let mut out = ApiErrorAttrs::default();
 
-        for attr in attrs.iter().filter(|attr| attr.path().is_ident("api_error")) {
+        for attr in attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("api_error"))
+        {
             attr.parse_nested_meta(|meta| {
                 let value = meta.value();
                 let path = meta.path;

@@ -2,7 +2,7 @@
 use super::response::{Body, HandlerResponse};
 use super::to_async::ToAsync;
 use crate::api::{ApiBody, ApiBodyInfo, ApiBodyType, ApiError};
-use crate::handler::{request::AsyncReadBody, HandlerBody, HandlerParam};
+use crate::handler::{HandlerBody, HandlerParam, request::AsyncReadBody};
 use http::{Method, Request, Response};
 use std::future::Future;
 use std::pin::Pin;

@@ -8,10 +8,10 @@
 //!
 //! To see the API in action.
 use axum::{
+    Router,
     body::Body,
     extract::State,
     routing::{any, get},
-    Router,
 };
 use futures::StreamExt;
 use http::{Request, Response};

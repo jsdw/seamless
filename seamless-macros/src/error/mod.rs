@@ -1,8 +1,12 @@
 mod attrs;
 
 use attrs::{ApiErrorAttrs, ErrorImpl};
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
+
+/// The identifier of the struct or enum in our generated methods
+/// (ie `fn from(s: ...) -> ...`)
+const IDENT: &str = "s";
 
 pub fn parse_struct(s: syn::ItemStruct) -> syn::Result<TokenStream2> {
     let name = &s.ident;
@@ -23,11 +27,11 @@ pub fn parse_struct(s: syn::ItemStruct) -> syn::Result<TokenStream2> {
                     "ApiError: Generics are not currently supported",
                 ));
             }
-            api_error_expr(&code, external_message.as_ref())
+            api_error_expr(IDENT, &code, external_message.as_ref())
         }
     };
 
-    Ok(from_impl(name, body))
+    Ok(from_impl(IDENT, name, body))
 }
 
 pub fn parse_enum(e: syn::ItemEnum) -> syn::Result<TokenStream2> {
@@ -61,31 +65,43 @@ pub fn parse_enum(e: syn::ItemEnum) -> syn::Result<TokenStream2> {
                     syn::Fields::Unnamed(..) => quote! { #ident(..) },
                     syn::Fields::Unit => quote! { #ident },
                 };
-                let api_error = api_error_expr(&code, external_message.as_ref());
+                let api_error = api_error_expr(IDENT, &code, external_message.as_ref());
                 quote! { #name::#pattern => #api_error, }
             }
         };
         match_arms.push(arm);
     }
 
-    Ok(from_impl(name, quote! { match s { #(#match_arms)* } }))
+    Ok(from_impl(
+        IDENT,
+        name,
+        quote! { match s { #(#match_arms)* } },
+    ))
 }
 
-/// `impl From<#name> for ApiError`, where `body` converts the value `s` into an `ApiError`.
-fn from_impl(name: &syn::Ident, body: TokenStream2) -> TokenStream2 {
+/// `impl From<#name> for ApiError`, where `body` converts the value `ident` into an `ApiError`.
+fn from_impl(ident: &str, name: &syn::Ident, body: TokenStream2) -> TokenStream2 {
     let api = crate::seamless_api();
+    let ident = syn::Ident::new(ident, Span::call_site());
+
     quote! {
         impl From<#name> for #api::ApiError {
-            fn from(s: #name) -> #api::ApiError {
+            fn from(#ident: #name) -> #api::ApiError {
                 #body
             }
         }
     }
 }
 
-/// An `ApiError` built from the `Display` impl of the value `s`.
-fn api_error_expr(code: &syn::Expr, external_message: Option<&syn::Expr>) -> TokenStream2 {
+/// An `ApiError` built from the `Display` impl of the value `ident`.
+fn api_error_expr(
+    ident: &str,
+    code: &syn::Expr,
+    external_message: Option<&syn::Expr>,
+) -> TokenStream2 {
     let api = crate::seamless_api();
+    let ident = syn::Ident::new(ident, Span::call_site());
+
     // Without an explicit external message, the `Display` impl is shown externally too:
     let external_message = match external_message {
         Some(msg) => quote! { #msg.to_owned() },
@@ -94,7 +110,7 @@ fn api_error_expr(code: &syn::Expr, external_message: Option<&syn::Expr>) -> Tok
     quote! {
         #api::ApiError {
             code: #code,
-            internal_message: s.to_string(),
+            internal_message: #ident.to_string(),
             external_message: #external_message,
             value: None,
         }

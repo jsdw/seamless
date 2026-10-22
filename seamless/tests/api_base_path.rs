@@ -28,9 +28,15 @@ async fn base_path_matches_whole_segments_only() {
     for base in ["/api", "api", "/api/", "api/"] {
         let api = api_with_base(base);
         assert!(found(&api, "/api/foo").await, "base {base:?}: /api/foo");
-        assert!(found(&api, "/api/v2/foo").await, "base {base:?}: /api/v2/foo");
+        assert!(
+            found(&api, "/api/v2/foo").await,
+            "base {base:?}: /api/v2/foo"
+        );
         assert!(found(&api, "/api//foo").await, "base {base:?}: /api//foo");
-        assert!(!found(&api, "/apiv2/foo").await, "base {base:?}: /apiv2/foo");
+        assert!(
+            !found(&api, "/apiv2/foo").await,
+            "base {base:?}: /apiv2/foo"
+        );
         assert!(!found(&api, "/apifoo").await, "base {base:?}: /apifoo");
         assert!(!found(&api, "/foo").await, "base {base:?}: /foo");
     }

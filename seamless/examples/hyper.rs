@@ -12,7 +12,7 @@
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt};
 use http::{Request, Response, StatusCode};
-use http_body_util::{combinators::UnsyncBoxBody, BodyExt, Full, StreamBody};
+use http_body_util::{BodyExt, Full, StreamBody, combinators::UnsyncBoxBody};
 use hyper::{
     body::{Frame, Incoming},
     server::conn::http1,
