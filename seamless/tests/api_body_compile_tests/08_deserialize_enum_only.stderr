@@ -6,14 +6,14 @@ error[E0277]: the trait bound `Foo: serde::Serialize` is not satisfied
    |             |
    |             required by a bound introduced by this call
    |
-help: the trait `seamless::serde::Serialize` is not implemented for `Foo`
+help: the trait `seamless::serde::ser::Serialize` is not implemented for `Foo`
   --> tests/api_body_compile_tests/08_deserialize_enum_only.rs:4:1
    |
  4 | enum Foo {
    | ^^^^^^^^
    = note: for local types consider adding `#[derive(serde::Serialize)]` to your `Foo` type
    = note: for types from other crates check whether the crate offers a `serde` feature flag
-   = help: the following other types implement trait `seamless::serde::Serialize`:
+   = help: the following other types implement trait `seamless::serde::ser::Serialize`:
              &'a T
              &'a mut T
              ()
