@@ -9,7 +9,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.14.0"
+version = "0.15.0"
 authors = ["James Wilson <james@jsdw.me>"]
 edition = "2024"
 license = "MIT"
@@ -20,9 +20,9 @@ keywords = ["api", "http", "rpc", "json"]
 [workspace.dependencies]
 # Workspace crates
 seamless = { path = "seamless" }
-seamless_macros = { version = "0.14.0", path = "seamless-macros" }
-seamless_info = { version = "0.14.0", path = "seamless-info", default-features = false }
-seamless_ts = { version = "0.14.0", path = "seamless-ts" }
+seamless_macros = { version = "0.15.0", path = "seamless-macros" }
+seamless_info = { version = "0.15.0", path = "seamless-info", default-features = false }
+seamless_ts = { version = "0.15.0", path = "seamless-ts" }
 
 # Dependencies
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
