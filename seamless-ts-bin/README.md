@@ -1,6 +1,6 @@
 # seamless_ts_bin
 
-A `seamless-ts` command line tool which generates a type safe TypeScript client for a
+A `seamless-ts` command line tool which generates TypeScript types describing a
 [seamless](https://crates.io/crates/seamless) API, using the `seamless_ts` crate.
 
 It takes the JSON produced by serializing the result of `seamless::Api::info()`, either from
@@ -11,8 +11,8 @@ errors are written to stderr.
 cargo install seamless_ts_bin
 
 # Read the API info from stdin:
-curl https://example.com/api/meta.info | seamless-ts > client.ts
+curl https://example.com/api/meta.info | seamless-ts > api.ts
 
 # Or read it from a file:
-seamless-ts --file api-info.json > client.ts
+seamless-ts --file api-info.json > api.ts
 ```

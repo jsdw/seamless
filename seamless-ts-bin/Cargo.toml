@@ -2,7 +2,7 @@
 name = "seamless_ts_bin"
 readme = "README.md"
 description = """
-A CLI tool to generate a type safe TypeScript client from the info describing a 'seamless' API
+A CLI tool to generate TypeScript types from the info describing a 'seamless' API
 """
 
 version.workspace = true

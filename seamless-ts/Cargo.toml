@@ -2,7 +2,7 @@
 name = "seamless_ts"
 readme = "README.md"
 description = """
-Generate a type safe TypeScript client from the info describing a 'seamless' API
+Generate TypeScript types from the info describing a 'seamless' API
 """
 
 version.workspace = true
