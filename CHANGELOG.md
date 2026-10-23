@@ -1,7 +1,7 @@
 # Unreleased
 
 - Add a `no_std` `seamless-ts` crate, whose `generate_client()` function takes the JSON serialized info for an API (from `Api::info()`) and writes TypeScript to any `core::fmt::Write`, exporting an `Api` type which describes the method, params and result type of every route.
-- Add a `seamless_ts_bin` crate providing a `seamless-ts` CLI tool, which reads the JSON serialized info for an API from stdin (or a file given with `--file`) and writes the generated TypeScript to stdout.
+- Add a `seamless_ts_bin` crate providing a `seamless-ts` CLI tool, which reads the JSON serialized info for an API from stdin (or a file given with `--file`, or a URL given with `--url`, optionally sending headers given with `-H`/`--header`) and writes the generated TypeScript to stdout.
 
 # 0.14.0
 
