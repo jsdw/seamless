@@ -22,9 +22,10 @@ mod fmt_helpers;
 /// calling `seamless::Api::info()`), and write TypeScript describing the API to the [`Write`]
 /// implementation provided (eg a [`String`]).
 ///
-/// The generated TypeScript exports a single `Api` type, which maps each route name to its
-/// HTTP method, the type of its request body (`params`, unless it's a `GET` route) and the
-/// type of its response (`result`). For example:
+/// The generated TypeScript exports an `Api` type, which maps each route name to its HTTP
+/// method, the type of its request body (`params`, which is `undefined` for `GET` routes) and
+/// the type of its response (`result`). Since types don't exist at runtime, it also exports a
+/// readonly `methods` object mapping each route name to its HTTP method. For example:
 ///
 /// ```ts
 /// export type Api = {
@@ -34,16 +35,43 @@ mod fmt_helpers;
 ///         result: { id: string, name: string }
 ///     }
 /// }
+///
+/// export const methods = {
+///     'users.get_by_id': 'POST',
+/// } as const
 /// ```
 ///
-/// This can be used to build a type safe client for the API.
+/// This can be used to build a type safe client for the API, for instance something like:
+///
+/// ```ts
+/// type Params<R extends keyof Api> = Api[R]['params'] extends undefined ? [] : [Api[R]['params']]
+///
+/// async function api<R extends keyof Api>(route: R, ...[params]: Params<R>): Promise<Api[R]['result']> {
+///     let method = methods[route];
+///
+///     let res = await fetch('url', {
+///         method,
+///         body: JSON.stringify(params)
+///     })
+///
+///     let body = await res.json()
+///
+///     if (!res.ok) {
+///         // This depends on how you handle seamless errors:
+///         throw new Error(body.message)
+///     } else {
+///         // This is the response body from seamless if all is well:
+///         return body
+///     }
+/// }
+/// ```
 ///
 /// # Errors
 ///
 /// Errors if the JSON provided can't be deserialized into an [`Vec<RouteInfo>`], or if two
 /// routes have the same name. Nothing is written in either case. Also errors if writing to
 /// `out` fails, in which case some of the output may already have been written.
-pub fn generate_types<W: Write + ?Sized>(route_info: &str, out: &mut W) -> Result<(), Error> {
+pub fn generate<W: Write + ?Sized>(route_info: &str, out: &mut W) -> Result<(), Error> {
     let mut routes: Vec<RouteInfo> =
         serde_json::from_str(route_info).map_err(Error::Deserialize)?;
     routes.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.method.cmp(&b.method)));
@@ -76,10 +104,10 @@ fn write_ts<W: Write + ?Sized>(out: &mut W, routes: &[RouteInfo]) -> fmt::Result
     writeln!(out, "/**")?;
     writeln!(out, " * The routes provided by our API")?;
     writeln!(out, " */")?;
-    if routes.is_empty() {
-        return writeln!(out, "export type Api = {{}}");
+    write!(out, "export type Api = {{")?;
+    if !routes.is_empty() {
+        writeln!(out)?;
     }
-    writeln!(out, "export type Api = {{")?;
     for route in routes {
         write_route_comment(out, route, 1)?;
         write_indent(out, 1)?;
@@ -87,12 +115,14 @@ fn write_ts<W: Write + ?Sized>(out: &mut W, routes: &[RouteInfo]) -> fmt::Result
         write_indent(out, 2)?;
         writeln!(out, "method: {}", SingleQuoted(&route.method))?;
         // Routes that aren't GET routes are expected to be given a body.
-        if !route.method.eq_ignore_ascii_case("GET") {
-            write_indent(out, 2)?;
-            write!(out, "params: ")?;
+        write_indent(out, 2)?;
+        write!(out, "params: ")?;
+        if route.method.eq_ignore_ascii_case("GET") {
+            write!(out, "undefined")?;
+        } else {
             write_type(out, &route.request_type.ty, 2)?;
-            writeln!(out)?;
         }
+        writeln!(out)?;
         write_indent(out, 2)?;
         write!(out, "result: ")?;
         write_type(out, &route.response_type.ty, 2)?;
@@ -100,7 +130,27 @@ fn write_ts<W: Write + ?Sized>(out: &mut W, routes: &[RouteInfo]) -> fmt::Result
         write_indent(out, 1)?;
         writeln!(out, "}}")?;
     }
-    writeln!(out, "}}")
+    writeln!(out, "}}")?;
+
+    // The methods are also needed at runtime, in order to make requests:
+    writeln!(out)?;
+    writeln!(out, "/**")?;
+    writeln!(out, " * The HTTP method of each route")?;
+    writeln!(out, " */")?;
+    write!(out, "export const methods = {{")?;
+    if !routes.is_empty() {
+        writeln!(out)?;
+    }
+    for route in routes {
+        write_indent(out, 1)?;
+        writeln!(
+            out,
+            "{}: {},",
+            SingleQuoted(&route.name),
+            SingleQuoted(&route.method)
+        )?;
+    }
+    writeln!(out, "}} as const")
 }
 
 /// Write out the TypeScript type corresponding to some [`ApiBodyType`]. The first line is
@@ -255,9 +305,9 @@ mod tests {
         r#type: String,
     }
 
-    fn generate(route_info: &str) -> Result<String, Error> {
+    fn generate_string(route_info: &str) -> Result<String, Error> {
         let mut out = String::new();
-        generate_types(route_info, &mut out)?;
+        generate(route_info, &mut out)?;
         Ok(out)
     }
 
@@ -350,6 +400,7 @@ export type Api = {
      */
     'widgets.list_all': {
         method: 'GET'
+        params: undefined
         result: ({
             colour: "Red" | "Blue" | null
             /** The widget name */
@@ -358,12 +409,22 @@ export type Api = {
         })[]
     }
 }
+
+/**
+ * The HTTP method of each route
+ */
+export const methods = {
+    'gadgets.tune': 'POST',
+    'gadgets.upload': 'POST',
+    'shelf/stack_items': 'POST',
+    'widgets.list_all': 'GET',
+} as const
 "#;
 
     #[test]
     fn generates_expected_types() {
         let info = serde_json::to_string(&example_api().info()).unwrap();
-        let ts = generate(&info).unwrap();
+        let ts = generate_string(&info).unwrap();
 
         // Handy for checking the output with `tsc`:
         if let Some(path) = std::env::var_os("SEAMLESS_TS_OUT") {
@@ -396,9 +457,9 @@ export type Api = {
                 }
             }
         }]);
-        let ts = generate(&info.to_string()).unwrap();
+        let ts = generate_string(&info.to_string()).unwrap();
 
-        assert!(ts.ends_with(
+        assert!(ts.contains(
             r#"    /**
      * PUT /it's/a-route
      */
@@ -415,12 +476,15 @@ export type Api = {
 }
 "#
         ));
+        assert!(
+            ts.ends_with("export const methods = {\n    'it\\'s/a-route': 'PUT',\n} as const\n")
+        );
     }
 
     #[test]
     fn empty_api() {
-        let ts = generate("[]").unwrap();
-        assert!(ts.ends_with("export type Api = {}\n"));
+        let ts = generate_string("[]").unwrap();
+        assert!(ts.ends_with("export type Api = {}\n\n/**\n * The HTTP method of each route\n */\nexport const methods = {} as const\n"));
     }
 
     fn route(name: &str, method: &str) -> Value {
@@ -435,7 +499,7 @@ export type Api = {
 
     #[test]
     fn errors_on_invalid_json() {
-        let err = generate(r#"[{ "name": "foo" }]"#).unwrap_err();
+        let err = generate_string(r#"[{ "name": "foo" }]"#).unwrap_err();
         assert!(matches!(err, Error::Deserialize(_)));
     }
 
@@ -447,7 +511,7 @@ export type Api = {
             route("foo", "GET")
         ]);
         let mut out = String::new();
-        let err = generate_types(&info.to_string(), &mut out).unwrap_err();
+        let err = generate(&info.to_string(), &mut out).unwrap_err();
         assert_eq!(err.to_string(), "More than one route has the name 'foo'");
         assert_eq!(out, "", "nothing should be written on error");
     }

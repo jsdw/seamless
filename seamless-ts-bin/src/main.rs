@@ -73,7 +73,7 @@ fn run(args: Args) -> Result<(), String> {
 
     let mut out = IoWriter::new(BufWriter::new(io::stdout().lock()));
     let write_error = |e: io::Error| format!("Could not write to stdout: {e}");
-    match seamless_ts::generate_types(&route_info, &mut out) {
+    match seamless_ts::generate(&route_info, &mut out) {
         Ok(()) => {}
         Err(seamless_ts::Error::Write(_)) => {
             return Err(write_error(out.take_error()));
