@@ -1,5 +1,13 @@
+# 0.15.0
+
+- Add a `no_std` `seamless-ts` crate, whose `generate_types()` function takes the JSON serialized info for an API (from `Api::info()`) and writes TypeScript to any `core::fmt::Write`, exporting an `Api` type which describes the method, params and result type of every route, and a readonly `methods` object holding the method of every route for use at runtime.
+- Add a `seamless_ts_bin` crate providing a `seamless-ts` CLI tool, which reads the JSON serialized info for an API from stdin (or a file given with `--file`, or a URL given with `--url`, optionally sending headers given with `-H`/`--header`) and writes the generated TypeScript to stdout.
+
 # 0.14.0
 
+- **Breaking:** `Api::add()` now panics if given an empty path (or one made up only of slashes).
+- **Breaking:** `ApiBodyType::Object { keys }` is now a `BTreeMap<String, ApiBodyInfo>` rather than a `HashMap`, since `HashMap` isn't available in `no_std`. Object keys are now serialized in a stable (sorted) order as a result.
+- `ApiBody` is now implemented for `BTreeMap<String, T>`.
 - **Breaking:** Remove the `IntoBody` trait. Unwrap body types directly instead, either by pattern matching in the handler arguments (eg `|Capped(FromJson(body)): Capped<FromJson<T>, N>| ...`) or via `.0`.
 - **Breaking:** `Option<T>` is now described as `OneOf [T, Null]` (ie `T | null`) rather than `Optional`, since serde serializes `None` as `null`. Previously, clients generated from the info would wrongly expect the key to be omitted.
 - Add `#[api_body(optional)]` for `Option<T>` fields in `ApiBody` structs and enum variants. The field is described as `Optional` (ie `{ key?: T }`), is omitted from the JSON when `None`, and is treated as `None` when missing.

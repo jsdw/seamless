@@ -4,7 +4,7 @@ use seamless::api::{ApiBodyInfo, ApiBodyType};
 
 macro_rules! map {
     ( $($key:expr => $val:expr),* ) => ({
-        let mut m = std::collections::HashMap::new();
+        let mut m = std::collections::BTreeMap::new();
         $( m.insert($key, $val); )*
         m
     })

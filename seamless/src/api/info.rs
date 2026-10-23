@@ -1,21 +1,5 @@
-use serde::Serialize;
-use std::collections::HashMap;
-
-/// A representation of some type, including its description and shape.
-/// This is given back for anything which implements the [`trait@crate::ApiBody`] trait,
-/// and is automatically generated if one uses the [`macro@crate::ApiBody`] macro on some type.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ApiBodyInfo {
-    /// A human friendly description of the type. When using the
-    /// [`ApiBody`](seamless_macros::ApiBody) macro, this will be automatically
-    /// populated based on the doc comments on the type.
-    pub description: String,
-    /// The shape of the type. This should correspond to the JSON returned when
-    /// serializing the type. If you use the [`ApiBody`](seamless_macros::ApiBody)
-    /// macro, this is guaranteed to be the case.
-    #[serde(rename = "shape")]
-    pub ty: ApiBodyType,
-}
+use seamless_info::{ApiBodyInfo, ApiBodyType};
+use std::collections::{BTreeMap, HashMap};
 
 // Primarily for internal use; structs can
 // be converted directly to this, so we know at the
@@ -24,81 +8,7 @@ pub struct ApiBodyInfo {
 #[doc(hidden)]
 pub struct ApiBodyStructInfo {
     pub description: String,
-    pub fields: HashMap<String, ApiBodyInfo>,
-}
-
-/// An enum representing the shape of the JSON that is provided or output from the API.
-/// There is a straightforward mapping from this to TypeScript types.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "type")]
-pub enum ApiBodyType {
-    /// Corresponds to the TypeScript type `string`.
-    String,
-    /// Corresponds to the TypeScript type `number`.
-    Number,
-    /// Corresponds to the TypeScript type `boolean`.
-    Boolean,
-    /// Corresponds to the TypeScript type `null`.
-    Null,
-    /// Corresponds to the TypeScript type `any`.
-    ///
-    /// This is used when the shape cannot be statically determined, and we want to
-    /// indicate that any type can be provided. In many cases [`ApiBodyType::Unknown`]
-    /// may be preferred.
-    Any,
-    /// Corresponds to the TypeScript type `unknown`.
-    ///
-    /// This is used when the shape cannot be statically determined, and we want to
-    /// indicate that we're not sure what the type is, unlike [`ApiBodyType::Any`]
-    /// which hints that *any* type can be provided.
-    Unknown,
-    /// Indicate that we expect binary data to be provided. This may correspond to
-    /// `Blob` in a UI.
-    Binary,
-    /// An array of values of one type, where each value has the type `value`, eg
-    /// `string[]` or `number[]`.
-    ArrayOf {
-        /// The type of all of the values in the array.
-        value: Box<ApiBodyInfo>,
-    },
-    /// A fixed length array of values that can be of mixed types, eg
-    /// `[string, number, Foo]`.
-    TupleOf {
-        /// A list of each of the types in this fixed length array.
-        values: Vec<ApiBodyInfo>,
-    },
-    /// An object where the keys are strings and the values are all of the same type, eg
-    /// `{ [key: string]: Foo }`.
-    ObjectOf {
-        /// The type of all of the values in the object/map.
-        value: Box<ApiBodyInfo>,
-    },
-    /// An object whose keys and value types are known at compile time, eg
-    /// `{ foo: string, bar: boolean, wibble: Foo }`.
-    Object {
-        /// The property name and type of each entry in the object.
-        keys: HashMap<String, ApiBodyInfo>,
-    },
-    /// The type is one of several variants, eg
-    /// `string | number | Foo`.
-    OneOf {
-        /// Each of the possible types that this can be.
-        values: Vec<ApiBodyInfo>,
-    },
-    /// The type is a string literal with a specific value, eg
-    /// `"stringvalue"`.
-    StringLiteral {
-        /// The exact string literal that we expect.
-        literal: String,
-    },
-    /// The object key may be omitted, eg `{ key?: Foo }`. This is expected to be used
-    /// on struct fields in conjunction with serde's `skip_serializing_if = Option::is_none`
-    /// attribute. Adding `#[api_body(optional)]` on a field when using the `ApiBody` macro
-    /// emits this, as well as the corresponding serde attribute.
-    Optional {
-        /// The type that is optional.
-        value: Box<ApiBodyInfo>,
-    },
+    pub fields: BTreeMap<String, ApiBodyInfo>,
 }
 
 /// Any type that implements this trait can be described in terms of [`ApiBodyInfo`], and
@@ -150,6 +60,16 @@ impl<T: ApiBody> ApiBody for Vec<T> {
     }
 }
 impl<T: ApiBody> ApiBody for HashMap<String, T> {
+    fn api_body_info() -> ApiBodyInfo {
+        ApiBodyInfo {
+            description: String::new(),
+            ty: ApiBodyType::ObjectOf {
+                value: Box::new(T::api_body_info()),
+            },
+        }
+    }
+}
+impl<T: ApiBody> ApiBody for BTreeMap<String, T> {
     fn api_body_info() -> ApiBodyInfo {
         ApiBodyInfo {
             description: String::new(),

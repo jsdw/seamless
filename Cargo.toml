@@ -1,12 +1,15 @@
 [workspace]
 members = [
     "seamless",
-    "seamless-macros"
+    "seamless-info",
+    "seamless-macros",
+    "seamless-ts",
+    "seamless-ts-bin"
 ]
 resolver = "3"
 
 [workspace.package]
-version = "0.14.0"
+version = "0.15.0"
 authors = ["James Wilson <james@jsdw.me>"]
 edition = "2024"
 license = "MIT"
@@ -17,14 +20,19 @@ keywords = ["api", "http", "rpc", "json"]
 [workspace.dependencies]
 # Workspace crates
 seamless = { path = "seamless" }
-seamless_macros = { version = "0.14.0", path = "seamless-macros" }
+seamless_macros = { version = "0.15.0", path = "seamless-macros" }
+seamless_info = { version = "0.15.0", path = "seamless-info", default-features = false }
+seamless_ts = { version = "0.15.0", path = "seamless-ts" }
 
 # Dependencies
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
 http = "1"
 futures = "0.3.34"
 bytes = "1"
+thiserror = { version = "2", default-features = false }
+clap = { version = "4.6.7", features = ["derive"] }
+ureq = "3.5.0"
 uuid = "1"
 syn = { version = "3", features = ["full", "extra-traits"] }
 quote = "1"
@@ -33,7 +41,6 @@ proc-macro2 = "1"
 # Dev dependencies
 trybuild = "1.0.120"
 pretty_assertions = "1"
-thiserror = "2"
 tokio = { version = "1.1.0", features = ["rt", "rt-multi-thread", "macros", "net"] }
 tokio-util = { version = "0.6.7", features = ["compat"] }
 axum = { version = "0.8.9", features = ["macros"] }

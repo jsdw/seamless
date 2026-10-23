@@ -1,10 +1,9 @@
 use super::error::ApiError;
-use super::info::ApiBodyInfo;
 use crate::handler::{
     Handler, IntoHandler, request::AsyncReadBody, response::Body as ResponseBody,
 };
 use http::{Method, Request, Response};
-use serde::Serialize;
+use seamless_info::RouteInfo;
 use std::collections::HashMap;
 
 /// The entry point; you can create an instance of this and then add API routes to it
@@ -56,6 +55,12 @@ impl Api {
     /// If you add a route at the same path and requiring the same method as an existing route,
     /// the existing route will be silently overwritten.
     ///
+    /// Leading and trailing slashes are ignored, so `"/foo/"` is the same path as `"foo"`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the path is empty, or consists only of slashes.
+    ///
     /// # Examples
     ///
     /// ```
@@ -78,7 +83,9 @@ impl Api {
     /// }
     /// ```
     pub fn add<P: Into<String>>(&mut self, path: P) -> RouteBuilder<'_> {
-        RouteBuilder::new(self, path.into())
+        let path = path.into().trim_matches('/').to_owned();
+        assert!(!path.is_empty(), "Routes cannot be added at an empty path");
+        RouteBuilder::new(self, path)
     }
 
     // Add a route given the individual parts (for internal use)
@@ -89,7 +96,6 @@ impl Api {
         handler_fn: HandlerFn,
     ) {
         let handler = handler_fn.into_handler();
-        let path = path.trim_matches('/').to_owned();
         self.routes.insert(
             (handler.method.clone(), path),
             Route {
@@ -248,27 +254,4 @@ impl<B, E> RouteError<B, E> {
             _ => panic!("Attempt to unwrap_err on RouteError that is NotFound"),
         }
     }
-}
-
-/// Information about a single route.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct RouteInfo {
-    /// The name/path that the [`http::Request`] needs to contain
-    /// in order to match this route.
-    pub name: String,
-    /// The HTTP method expected in order for a [`http::Request`] to
-    /// match this route, as a string.
-    pub method: String,
-    /// The description of the route as set by [`RouteBuilder::description()`]
-    pub description: String,
-    /// The shape of the data expected to be provided as part of the [`http::Request`]
-    /// for this route. This doesn't care about the wire format that the data is provided in,
-    /// though the type information is somewhat related to what the possible types that can
-    /// be sent and received via JSON.
-    ///
-    /// Types can use the [`macro@crate::ApiBody`] macro, or implement [`type@crate::api::ApiBody`]
-    /// manually in order to describe the shape and documentation that they should hand back.
-    pub request_type: ApiBodyInfo,
-    /// The shape of the data that is returned from this API route.
-    pub response_type: ApiBodyInfo,
 }

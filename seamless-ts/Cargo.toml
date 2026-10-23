@@ -1,0 +1,24 @@
+[package]
+name = "seamless_ts"
+readme = "README.md"
+description = """
+Generate TypeScript types from the info describing a 'seamless' API
+"""
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[dependencies]
+seamless_info = { workspace = true, features = ["deserialize"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+seamless.workspace = true
+serde_json = { workspace = true, features = ["std"] }
+pretty_assertions.workspace = true

@@ -23,7 +23,7 @@ Copy any doc changes from `seamless/lib.rs` to the edited versions of `seamless/
 
 ## Bump versions
 
-Bump the version in `seamless/Cargo.toml` and `seamless-macros/Cargo.toml`.
+Bump the version in the root `Cargo.toml` (both `workspace.package.version` and the `seamless_macros` and `seamless_info` workspace dependency versions).
 
 ## Update CHANGELOG.md
 
@@ -40,9 +40,8 @@ git push origin master --tags
 
 ## Publish
 
-Publish the macro crate first since the main crate depends on it existing.
+Run this in the workspace to publish everything
 
 ```
-(cd seamless-macros && cargo publish)
-(cd seamless && cargo publish)
+cargo publish
 ```

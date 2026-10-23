@@ -58,3 +58,15 @@ async fn empty_base_path_matches_everything() {
         assert!(found(&api, "/v2/foo").await, "base {base:?}");
     }
 }
+
+#[test]
+#[should_panic(expected = "Routes cannot be added at an empty path")]
+fn empty_route_path_panics() {
+    Api::new().add("");
+}
+
+#[test]
+#[should_panic(expected = "Routes cannot be added at an empty path")]
+fn slash_only_route_path_panics() {
+    Api::new_with_base_path("/api").add("//");
+}

@@ -206,7 +206,8 @@ At some point, you'll probably want to get information about the shape of the AP
 and generate a typed API client (this is, after all, the main selling point of this library). To do this,
 use the `Api::info()` function.
 
-Probably the best way to see what shapes this info can take is by looking at `api/info.rs`.
+The types describing this info live in the `no_std` `seamless_info` crate (and are re-exported from `seamless::api`).
+Enable its `deserialize` feature to read the info back in, for instance to generate a typed API client from it.
 
 Here's an example:
 

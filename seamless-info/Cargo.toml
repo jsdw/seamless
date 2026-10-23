@@ -1,0 +1,27 @@
+[package]
+name = "seamless_info"
+readme = "README.md"
+description = """
+The no_std types describing a 'seamless' API, eg as returned from `Api::info()`
+"""
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[features]
+default = ["serialize", "deserialize"]
+# Derive `serde::Serialize` on all types.
+serialize = ["dep:serde"]
+# Derive `serde::Deserialize` on all types.
+deserialize = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
