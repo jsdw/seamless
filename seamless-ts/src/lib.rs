@@ -1,6 +1,6 @@
 //! Generate TypeScript types describing a [seamless](https://docs.rs/seamless) API.
 //!
-//! This crate is `no_std` (though it requires `alloc`). See [`generate_types()`].
+//! This crate is `no_std` (though it requires `alloc`). See [`generate()`] and [`generate_from_str()`].
 
 // Tests use std (eg via the ApiBody macro), so only be no_std outside of them.
 #![cfg_attr(not(test), no_std)]
@@ -21,6 +21,17 @@ mod fmt_helpers;
 /// Take the JSON obtained by serializing the [`Vec<RouteInfo>`] for some API (ie the result of
 /// calling `seamless::Api::info()`), and write TypeScript describing the API to the [`Write`]
 /// implementation provided (eg a [`String`]).
+///
+/// See [`generate`] for more information. This additionally errors if the JSON provided can't be
+/// deserialized into a [`Vec<RouteInfo>`], in which case nothing is written.
+pub fn generate_from_str<W: Write + ?Sized>(route_info: &str, out: &mut W) -> Result<(), Error> {
+    let routes: Vec<RouteInfo> = serde_json::from_str(route_info).map_err(Error::Deserialize)?;
+
+    generate(routes, out)
+}
+
+/// Take some [`Vec<RouteInfo>`] for some API (ie the result of calling `seamless::Api::info()`),
+/// and write TypeScript describing the API to the [`Write`] implementation provided (eg a [`String`]).
 ///
 /// The generated TypeScript exports an `Api` type, which maps each route name to its HTTP
 /// method, the type of its request body (`params`, which is `undefined` for `GET` routes) and
@@ -68,12 +79,9 @@ mod fmt_helpers;
 ///
 /// # Errors
 ///
-/// Errors if the JSON provided can't be deserialized into an [`Vec<RouteInfo>`], or if two
-/// routes have the same name. Nothing is written in either case. Also errors if writing to
+/// Errors if two routes have the same name, in which case nothing is written. Also errors if writing to
 /// `out` fails, in which case some of the output may already have been written.
-pub fn generate<W: Write + ?Sized>(route_info: &str, out: &mut W) -> Result<(), Error> {
-    let mut routes: Vec<RouteInfo> =
-        serde_json::from_str(route_info).map_err(Error::Deserialize)?;
+pub fn generate<W: Write + ?Sized>(mut routes: Vec<RouteInfo>, out: &mut W) -> Result<(), Error> {
     routes.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.method.cmp(&b.method)));
 
     // Routes are keyed by name in the generated type, so names must be unique.
@@ -307,7 +315,7 @@ mod tests {
 
     fn generate_string(route_info: &str) -> Result<String, Error> {
         let mut out = String::new();
-        generate(route_info, &mut out)?;
+        generate_from_str(route_info, &mut out)?;
         Ok(out)
     }
 
@@ -511,7 +519,7 @@ export const methods = {
             route("foo", "GET")
         ]);
         let mut out = String::new();
-        let err = generate(&info.to_string(), &mut out).unwrap_err();
+        let err = generate_from_str(&info.to_string(), &mut out).unwrap_err();
         assert_eq!(err.to_string(), "More than one route has the name 'foo'");
         assert_eq!(out, "", "nothing should be written on error");
     }

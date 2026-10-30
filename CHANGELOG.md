@@ -1,3 +1,7 @@
+# 0.16.0
+
+- **Breaking:** `seamless_ts::generate()` now takes the `Vec<RouteInfo>` describing an API (ie the result of `Api::info()`) directly, rather than the JSON serialized form of it. The previous behaviour, which takes a JSON `&str`, is available as `seamless_ts::generate_from_str()`.
+
 # 0.15.0
 
 - Add a `no_std` `seamless-ts` crate, whose `generate_types()` function takes the JSON serialized info for an API (from `Api::info()`) and writes TypeScript to any `core::fmt::Write`, exporting an `Api` type which describes the method, params and result type of every route, and a readonly `methods` object holding the method of every route for use at runtime.
